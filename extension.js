@@ -22,9 +22,6 @@ import Clutter from 'gi://Clutter';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const ICON_IDLE      = '✨';
-const ICON_DONE      = '✓';
-const ICON_ERROR     = '✗';
 
 const TextProIndicator = GObject.registerClass(
 class TextProIndicator extends PanelMenu.Button {
@@ -34,21 +31,23 @@ class TextProIndicator extends PanelMenu.Button {
         this._ext = extension;
 
         const box = new St.BoxLayout({ vertical: false, style_class: 'panel-status-indicators-box' });
-        
-        this._mainIcon = new St.Icon({
-            icon_name: 'preferences-system-search-symbolic',
-            style_class: 'system-status-icon',
-        });
-        box.add_child(this._mainIcon);
 
-        // Panel label (shows animated icon + optional short status text)
+        // Main panel icon — changes icon_name + color class based on state
+        this._panelIcon = new St.Icon({
+            icon_name: 'document-edit-symbolic',
+            style_class: 'system-status-icon llm-panel-icon',
+        });
+        box.add_child(this._panelIcon);
+
+        // Spinner label — visible ONLY during processing
         this._iconLabel = new St.Label({
-            text: ICON_IDLE,
-            style_class: 'llm-text-pro-icon',
+            text: SPINNER_FRAMES[0],
+            style_class: 'llm-text-pro-icon llm-processing',
             y_align: Clutter.ActorAlign.CENTER,
+            visible: false,
         });
         box.add_child(this._iconLabel);
-        
+
         this.add_child(box);
 
         this._animTimer = null;
@@ -56,9 +55,9 @@ class TextProIndicator extends PanelMenu.Button {
         this._quotaTimer = null;
 
         this._buildMenu();
-        
+
         this._setupQuotaTimer();
-        
+
         this._ext._settings.connect('changed::auto-check-quota', () => {
             this._setupQuotaTimer();
         });
@@ -69,15 +68,13 @@ class TextProIndicator extends PanelMenu.Button {
             GLib.source_remove(this._quotaTimer);
             this._quotaTimer = null;
         }
-        
+
         const enabled = this._ext._settings.get_boolean('auto-check-quota');
         if (enabled) {
-            // Auto-check quota every 5 minutes (300,000 ms)
             this._quotaTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300000, () => {
                 this._checkQuota(true);
                 return GLib.SOURCE_CONTINUE;
             });
-            // Fire initial quota check
             this._checkQuota(true);
         }
     }
@@ -85,37 +82,36 @@ class TextProIndicator extends PanelMenu.Button {
     // ── Menu construction ────────────────────────────────────────────────────
 
     _buildMenu() {
-        // Top status row (non-interactive)
         this._statusItem = new PopupMenu.PopupImageMenuItem('Ready', 'dialog-information-symbolic', { reactive: false });
         this._statusItem.label.style_class = 'llm-status-label';
         this.menu.addMenuItem(this._statusItem);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Custom Backend Slide Switch
+        // Backend switcher
         this._backendBoxItem = new PopupMenu.PopupBaseMenuItem({ reactive: false });
-        
+
         const backendContainerOuter = new St.BoxLayout({ vertical: false, x_expand: true });
-        
+
         const backendLabel = new St.Label({
-            text: 'AI Backend:',
+            text: 'Backend',
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'llm-backend-title',
             x_expand: true,
         });
         backendContainerOuter.add_child(backendLabel);
 
-        this._backendSwitchBox = new St.BoxLayout({ 
-            vertical: false, 
-            style_class: 'llm-backend-switch-container' 
+        this._backendSwitchBox = new St.BoxLayout({
+            vertical: false,
+            style_class: 'llm-backend-switch-container',
         });
         backendContainerOuter.add_child(this._backendSwitchBox);
-        
+
         this._backendBoxItem.add_child(backendContainerOuter);
         this.menu.addMenuItem(this._backendBoxItem);
 
-        // Quota Status Item
-        this._quotaItem = new PopupMenu.PopupImageMenuItem('Quota: Unknown (Click to check)', 'network-server-symbolic');
+        // Quota / connection status
+        this._quotaItem = new PopupMenu.PopupImageMenuItem('Connection: Unknown — click to check', 'network-wired-symbolic');
         this._quotaItem.connect('activate', () => {
             this._checkQuota(false);
         });
@@ -123,7 +119,7 @@ class TextProIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Placeholder for dynamic action items — rebuilt when menu opens
+        // Dynamic action items
         this._actionsSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._actionsSection);
 
@@ -131,17 +127,16 @@ class TextProIndicator extends PanelMenu.Button {
 
         // History sub-menu
         this._historyMenu = new PopupMenu.PopupSubMenuMenuItem('Transformation History');
-        this._historyMenu.icon.icon_name = 'document-open-recent-symbolic';
+        if (this._historyMenu.icon) this._historyMenu.icon.icon_name = 'document-open-recent-symbolic';
         this.menu.addMenuItem(this._historyMenu);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Settings item
+        // Settings
         const settingsItem = new PopupMenu.PopupImageMenuItem('Extension Settings', 'preferences-system-symbolic');
         settingsItem.connect('activate', () => this._ext.openPreferences());
         this.menu.addMenuItem(settingsItem);
 
-        // Rebuild actions whenever the menu opens (picks up settings changes)
         this.menu.connect('open-state-changed', (menu, open) => {
             if (open) {
                 this._rebuildBackendMenu();
@@ -150,30 +145,30 @@ class TextProIndicator extends PanelMenu.Button {
                 this._updateStatusInfo();
             }
         });
-        
-        // Initial setup
+
         this._updateStatusInfo();
         this._rebuildBackendMenu();
     }
-    
+
     _updateStatusInfo() {
         const backend = this._ext._settings.get_string('backend');
         let info = 'Ready';
         if (backend === 'local') {
             const model = this._ext._settings.get_string('local-model');
-            info = `Status: Local (${model})`;
+            info = `Local — ${model}`;
         } else if (backend === 'gemini-cli') {
             const model = this._ext._settings.get_string('gemini-model');
-            info = `Status: Gemini (${model})`;
+            info = `Gemini — ${model}`;
         } else if (backend === 'claude-cli') {
             const model = this._ext._settings.get_string('claude-model');
-            info = `Status: Claude (${model})`;
+            info = `Claude — ${model}`;
         } else if (backend === 'copilot-cli') {
             const model = this._ext._settings.get_string('copilot-model');
-            info = `Status: Copilot (${model})`;
+            info = `Copilot — ${model}`;
         }
-        
-        if (this._iconLabel.text === ICON_IDLE) {
+
+        // Only update status text when not actively spinning
+        if (!this._iconLabel.visible) {
             this._statusItem.label.text = info;
         }
     }
@@ -181,18 +176,20 @@ class TextProIndicator extends PanelMenu.Button {
     _rebuildBackendMenu() {
         this._backendSwitchBox.destroy_all_children();
         const current = this._ext._settings.get_string('backend');
-        
+
         const backends = [
-            { id: 'local', name: 'Local' },
-            { id: 'gemini-cli', name: 'Gemini' },
-            { id: 'claude-cli', name: 'Claude' },
-            { id: 'copilot-cli', name: 'Copilot' }
+            { id: 'local',       name: 'Local'   },
+            { id: 'gemini-cli',  name: 'Gemini'  },
+            { id: 'claude-cli',  name: 'Claude'  },
+            { id: 'copilot-cli', name: 'Copilot' },
         ];
-        
+
         backends.forEach(b => {
             const btn = new St.Button({
                 label: b.name,
-                style_class: b.id === current ? 'llm-backend-btn llm-backend-btn-active' : 'llm-backend-btn',
+                style_class: b.id === current
+                    ? 'llm-backend-btn llm-backend-btn-active'
+                    : 'llm-backend-btn',
                 can_focus: true,
                 reactive: true,
                 x_align: Clutter.ActorAlign.CENTER,
@@ -209,11 +206,11 @@ class TextProIndicator extends PanelMenu.Button {
     }
 
     async _checkQuota(silent = false) {
-        if (!silent) this.setProcessing('Checking API...');
-        
+        if (!silent) this.setProcessing('Checking API…');
+
         const backend = this._ext._settings.get_string('backend');
         if (backend === 'local') {
-            this._quotaItem.label.text = 'Local AI: Checking status...';
+            this._quotaItem.label.text = 'Local AI: Checking…';
             try {
                 let endpoint = this._ext._settings.get_string('api-endpoint');
                 let url = endpoint;
@@ -226,7 +223,7 @@ class TextProIndicator extends PanelMenu.Button {
 
                 const session = new Soup.Session();
                 const msg = Soup.Message.new('GET', url);
-                
+
                 const apiKey = this._ext._settings.get_string('api-key');
                 if (apiKey && apiKey !== 'random' && apiKey.trim() !== '') {
                     msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
@@ -239,62 +236,104 @@ class TextProIndicator extends PanelMenu.Button {
                     });
                 });
 
-                if (msg.get_status() !== 200) {
-                    throw new Error(`HTTP ${msg.get_status()}`);
-                }
+                if (msg.get_status() !== 200) throw new Error(`HTTP ${msg.get_status()}`);
 
                 const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
                 const models = (json.data || []);
-                
+
                 if (models.length === 0) {
-                    this._quotaItem.label.text = 'Local AI: Online (No model loaded)';
+                    this._quotaItem.label.text = 'Local AI: Online (no model loaded)';
                 } else {
                     const activeModel = models[0].id.split('/').pop();
-                    let infoStr = `Local AI: Online (${activeModel})`;
-                    
-                    // Display size if LM studio provides it
+                    let infoStr = `Local AI: Online — ${activeModel}`;
                     if (models[0].size) {
                         const sizeGB = (models[0].size / 1e9).toFixed(1);
-                        infoStr += ` - ${sizeGB}GB`;
+                        infoStr += ` (${sizeGB} GB)`;
                     }
-                    
                     this._quotaItem.label.text = infoStr;
-                    
-                    if (this._iconLabel.text === ICON_IDLE) {
-                        this._statusItem.label.text = `Status: Local (${activeModel})`;
+                    if (!this._iconLabel.visible) {
+                        this._statusItem.label.text = `Local — ${activeModel}`;
                     }
                 }
                 if (!silent) this.setDone('Local API OK');
             } catch (e) {
-                this._quotaItem.label.text = 'Local AI: Offline / Unreachable';
-                if (!silent) this.setError('Local API Offline');
+                this._quotaItem.label.text = 'Local AI: Offline / unreachable';
+                if (!silent) this.setError('Local API offline');
             }
             return;
         }
 
-        this._quotaItem.label.text = 'Quota: Checking...';
+        this._quotaItem.label.text = 'Checking connection…';
         try {
-            // Send a tiny prompt to verify quota
-            await this._ext._callBackend(backend, "Reply only 'OK'", "Test");
-            this._quotaItem.label.text = 'Quota: 0% Used (OK)';
-            if (!silent) this.setDone('Quota OK');
+            await this._ext._callBackend(backend, "Reply only 'OK'", 'Test');
+            this._quotaItem.label.text = 'Connection: OK';
+            if (!silent) this.setDone('Connection OK');
         } catch (e) {
             const errStr = (e.message || String(e)).toLowerCase();
-            let limitFound = false;
-            
-            // Extract or infer percent based on known CLI messages
             if (errStr.includes('hit your limit') || errStr.includes('capacity') || errStr.includes('429')) {
-                this._quotaItem.label.text = 'Quota: 100% Used (Limit Reached)';
-                limitFound = true;
+                this._quotaItem.label.text = 'Connection: Quota limit reached';
+                if (!silent) this.setError('Quota limit reached');
             } else {
-                // If it fails for another reason (e.g. timeout, 404 model not found)
-                this._quotaItem.label.text = 'Quota: Error (Check logs)';
-            }
-            
-            if (!silent) {
-                this.setError(limitFound ? 'API Limit Reached' : 'API Check Error');
+                this._quotaItem.label.text = 'Connection: Error — check logs';
+                if (!silent) this.setError('Connection error');
             }
         }
+    }
+
+    // ── Smart action icon selection ──────────────────────────────────────────
+
+    _getActionIcon(action) {
+        const idMap = {
+            'fix-grammar':       'tools-check-spelling-symbolic',
+            'improve-text':      'go-up-symbolic',
+            'humanize-text':     'user-available-symbolic',
+            'make-professional': 'mail-send-symbolic',
+            'make-casual':       'face-smile-symbolic',
+            'fix-tone':          'dialog-information-symbolic',
+            'reply-message':     'mail-reply-sender-symbolic',
+            'translate':         'accessories-dictionary-symbolic',
+            'translate-pl':      'accessories-dictionary-symbolic',
+            'summarize':         'document-properties-symbolic',
+            'bullet-points':     'view-list-bullet-symbolic',
+            'keywords-to-text':  'document-new-symbolic',
+            'expand-text':       'list-add-symbolic',
+            'add-emojis':        'face-wink-symbolic',
+            'explain-code':      'dialog-question-symbolic',
+            'refactor-code':     'utilities-terminal-symbolic',
+        };
+        if (action.id && idMap[action.id]) return idMap[action.id];
+
+        // Fallback for user-created actions: name-based matching
+        const name = (action.name || '').toLowerCase();
+        if (name.includes('grammar') || name.includes('spell') || name.includes('correct'))
+            return 'tools-check-spelling-symbolic';
+        if (name.includes('translat'))
+            return 'accessories-dictionary-symbolic';
+        if (name.includes('improve') || name.includes('enhance') || name.includes('refine'))
+            return 'go-up-symbolic';
+        if (name.includes('summar') || name.includes('concis') || name.includes('shorten'))
+            return 'document-properties-symbolic';
+        if (name.includes('professional') || name.includes('formal') || name.includes('business'))
+            return 'mail-send-symbolic';
+        if (name.includes('expand') || name.includes('elaborat') || name.includes('detail'))
+            return 'list-add-symbolic';
+        if (name.includes('code') || name.includes('program') || name.includes('script') || name.includes('refactor'))
+            return 'utilities-terminal-symbolic';
+        if (name.includes('casual') || name.includes('friendly'))
+            return 'face-smile-symbolic';
+        if (name.includes('reply') || name.includes('mail') || name.includes('message'))
+            return 'mail-reply-sender-symbolic';
+        if (name.includes('emoji') || name.includes('fun'))
+            return 'face-wink-symbolic';
+        if (name.includes('keyword') || name.includes('write') || name.includes('draft'))
+            return 'document-new-symbolic';
+        if (name.includes('bullet') || name.includes('list'))
+            return 'view-list-bullet-symbolic';
+        if (name.includes('human') || name.includes('ai pattern') || name.includes('tone'))
+            return 'user-available-symbolic';
+        if (name.includes('explain') || name.includes('simplif'))
+            return 'dialog-question-symbolic';
+        return 'document-edit-symbolic';
     }
 
     _rebuildActionItems() {
@@ -309,7 +348,7 @@ class TextProIndicator extends PanelMenu.Button {
         }
 
         enabled.forEach(action => {
-            const item = new PopupMenu.PopupImageMenuItem(action.name, 'system-run-symbolic');
+            const item = new PopupMenu.PopupImageMenuItem(action.name, this._getActionIcon(action));
             if (action.hotkey) {
                 item.add_child(new St.Label({
                     text: action.hotkey,
@@ -337,8 +376,7 @@ class TextProIndicator extends PanelMenu.Button {
             return;
         }
 
-        // Most-recent first
-        [...history].reverse().forEach((entry, i) => {
+        [...history].reverse().forEach(entry => {
             const snippet = entry.result.replace(/\n/g, ' ').substring(0, 60);
             const item = new PopupMenu.PopupImageMenuItem(`${entry.actionName}: ${snippet}…`, 'edit-copy-symbolic');
             item.connect('activate', () => {
@@ -370,39 +408,41 @@ class TextProIndicator extends PanelMenu.Button {
 
     setProcessing(actionName) {
         this._cancelResetTimer();
-        this._iconLabel.remove_style_class_name('llm-done');
-        this._iconLabel.remove_style_class_name('llm-error');
-        this._iconLabel.add_style_class_name('llm-processing');
+        this._panelIcon.visible = false;
+        this._iconLabel.visible = true;
         this._statusItem.label.text = `${actionName}…`;
         this._startSpinner();
     }
 
     setDone(actionName) {
         this._stopSpinner();
-        this._iconLabel.remove_style_class_name('llm-processing');
-        this._iconLabel.remove_style_class_name('llm-error');
-        this._iconLabel.add_style_class_name('llm-done');
-        this._iconLabel.text = ICON_DONE;
+        this._iconLabel.visible = false;
+        this._panelIcon.icon_name = 'object-select-symbolic';
+        this._panelIcon.remove_style_class_name('llm-icon-error');
+        this._panelIcon.add_style_class_name('llm-icon-done');
+        this._panelIcon.visible = true;
         this._statusItem.label.text = `Done — ${actionName}`;
         this._scheduleReset(2500);
     }
 
     setError(message) {
         this._stopSpinner();
-        this._iconLabel.remove_style_class_name('llm-processing');
-        this._iconLabel.remove_style_class_name('llm-done');
-        this._iconLabel.add_style_class_name('llm-error');
-        this._iconLabel.text = ICON_ERROR;
+        this._iconLabel.visible = false;
+        this._panelIcon.icon_name = 'dialog-error-symbolic';
+        this._panelIcon.remove_style_class_name('llm-icon-done');
+        this._panelIcon.add_style_class_name('llm-icon-error');
+        this._panelIcon.visible = true;
         this._statusItem.label.text = `Error: ${message.substring(0, 50)}`;
         this._scheduleReset(4000);
     }
 
     setIdle() {
         this._stopSpinner();
-        this._iconLabel.remove_style_class_name('llm-processing');
-        this._iconLabel.remove_style_class_name('llm-done');
-        this._iconLabel.remove_style_class_name('llm-error');
-        this._iconLabel.text = ICON_IDLE;
+        this._iconLabel.visible = false;
+        this._panelIcon.icon_name = 'document-edit-symbolic';
+        this._panelIcon.remove_style_class_name('llm-icon-done');
+        this._panelIcon.remove_style_class_name('llm-icon-error');
+        this._panelIcon.visible = true;
         this._statusItem.label.text = 'Ready';
     }
 
@@ -411,7 +451,7 @@ class TextProIndicator extends PanelMenu.Button {
     _startSpinner() {
         this._stopSpinner();
         let frame = 0;
-        this._animTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+        this._animTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
             if (!this._iconLabel) return GLib.SOURCE_REMOVE;
             this._iconLabel.text = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
             frame++;
@@ -463,10 +503,10 @@ export default class LLMTextProExtension extends Extension {
 
     constructor(metadata) {
         super(metadata);
-        this._indicator      = null;
-        this._settings       = null;
+        this._indicator       = null;
+        this._settings        = null;
         this._httpSession     = null;
-        this._accelMap        = new Map();   // accelId → action.id
+        this._accelMap        = new Map();
         this._displaySignalId = null;
         this._settingsSignalId = null;
         this._history         = [];
@@ -476,14 +516,13 @@ export default class LLMTextProExtension extends Extension {
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
     enable() {
-        this._settings   = this.getSettings();
+        this._settings    = this.getSettings();
         this._httpSession = new Soup.Session();
-        this._history    = [];
+        this._history     = [];
 
         this._indicator = new TextProIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
 
-        // Connect accelerator-activated ONCE on the display
         this._displaySignalId = global.display.connect(
             'accelerator-activated',
             (_display, accelId) => this._onAcceleratorActivated(accelId)
@@ -491,7 +530,6 @@ export default class LLMTextProExtension extends Extension {
 
         this._bindAllHotkeys();
 
-        // Re-bind when actions JSON changes in settings
         this._settingsSignalId = this._settings.connect(
             'changed::actions-json',
             () => {
@@ -520,8 +558,8 @@ export default class LLMTextProExtension extends Extension {
         this._httpSession?.abort();
         this._httpSession = null;
 
-        this._settings   = null;
-        this._history    = [];
+        this._settings     = null;
+        this._history      = [];
         this._isProcessing = false;
     }
 
@@ -535,7 +573,7 @@ export default class LLMTextProExtension extends Extension {
         }
     }
 
-    // ── Hotkey management (via grab_accelerator) ──────────────────────────────
+    // ── Hotkey management ────────────────────────────────────────────────────
 
     _bindAllHotkeys() {
         const actions = this._getActions();
@@ -570,9 +608,7 @@ export default class LLMTextProExtension extends Extension {
                 const bindingName = Meta.external_binding_name_for_action(accelId);
                 Main.wm.removeKeybinding(bindingName);
                 global.display.ungrab_accelerator(accelId);
-            } catch (_e) {
-                // Ignore errors on disable
-            }
+            } catch (_e) {}
         });
         this._accelMap.clear();
     }
@@ -600,7 +636,6 @@ export default class LLMTextProExtension extends Extension {
         const showNotif = this._settings.get_boolean('show-notifications');
 
         try {
-            // Read clipboard
             const clipboard = St.Clipboard.get_default();
             const inputText = await new Promise((resolve, reject) => {
                 clipboard.get_text(St.ClipboardType.CLIPBOARD, (_clip, text) => {
@@ -616,19 +651,19 @@ export default class LLMTextProExtension extends Extension {
                 Main.notify('LLM Text Pro', `Running "${action.name}"…`);
             }
 
-            // Determine effective backend
             const globalBackend = this._settings.get_string('backend');
             const backend = (action.backend && action.backend !== 'default')
                 ? action.backend
                 : globalBackend;
 
-            // Call backend
-            const resultText = await this._callBackend(backend, action.prompt, inputText);
+            const result = await this._callBackend(backend, action.prompt, inputText);
+            // All backends return { text, info } — extract the text string
+            const resultText = (result && typeof result === 'object') ? result.text : String(result);
 
-            // Write result to clipboard
+            if (!resultText) throw new Error('Backend returned an empty result.');
+
             clipboard.set_text(St.ClipboardType.CLIPBOARD, resultText);
 
-            // Auto-paste
             if (this._settings.get_boolean('auto-paste')) {
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 80, () => {
                     this._simulatePaste();
@@ -636,7 +671,6 @@ export default class LLMTextProExtension extends Extension {
                 });
             }
 
-            // Record history
             const histSize = this._settings.get_int('history-size');
             this._history.push({
                 actionName: action.name,
@@ -651,7 +685,7 @@ export default class LLMTextProExtension extends Extension {
             this._indicator?.setDone(action.name);
 
             if (showNotif) {
-                Main.notify('LLM Text Pro', `✓ "${action.name}" complete!`);
+                Main.notify('LLM Text Pro', `"${action.name}" complete!`);
             }
 
         } catch (e) {
@@ -679,14 +713,14 @@ export default class LLMTextProExtension extends Extension {
         }
     }
 
-    // ── Local OpenAI-compatible API ───────────────────────────────────────────
+    // ── Local OpenAI-compatible API ──────────────────────────────────────────
 
     async _callLocalAPI(prompt, text, isRetry = false) {
         if (!this._httpSession) throw new Error('HTTP session not initialised.');
 
-        const endpoint  = this._settings.get_string('api-endpoint');
-        const model     = this._settings.get_string('local-model');
-        const apiKey    = this._settings.get_string('api-key');
+        const endpoint = this._settings.get_string('api-endpoint');
+        const model    = this._settings.get_string('local-model');
+        const apiKey   = this._settings.get_string('api-key');
 
         const payload = JSON.stringify({
             model,
@@ -729,33 +763,101 @@ export default class LLMTextProExtension extends Extension {
         const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
         const content = json?.choices?.[0]?.message?.content;
         if (!content) throw new Error('Unexpected API response format.');
-        
+
         let info = `Model: ${json.model || model}`;
-        if (json.usage && json.usage.total_tokens) {
-            info += `\nTokens: ${json.usage.total_tokens}`;
-        }
-        
+        if (json.usage?.total_tokens) info += `\nTokens: ${json.usage.total_tokens}`;
+
         return { text: content.trim(), info };
     }
 
     async _autoStartLMSAndRetry(prompt, text) {
-        Main.notify('LLM Text Pro', 'Starting LM Studio server...');
-        try {
-            const proc = new Gio.Subprocess({
-                argv: ['lms', 'server', 'start'],
-                flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-            });
-            proc.init(null);
-        } catch (e) {
-            console.warn('[LLM Text Pro] Failed to start LMS:', e.message);
+        this._indicator?.setProcessing('Starting LM Studio');
+        Main.notify('LLM Text Pro', 'Starting LM Studio…');
+
+        // Build the models health-check URL from the configured endpoint
+        let modelsUrl = this._settings.get_string('api-endpoint');
+        if (modelsUrl.endsWith('/chat/completions')) {
+            modelsUrl = modelsUrl.replace('/chat/completions', '/models');
+        } else if (!modelsUrl.endsWith('/models')) {
+            modelsUrl = modelsUrl.replace(/\/?$/, '') + '/models';
         }
-        await new Promise((r) => {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 4000, () => { r(); return GLib.SOURCE_REMOVE; });
-        });
-        return this._callLocalAPI(prompt, text, true);
+
+        // Step 1: launch the LM Studio GUI app.
+        // lms CLI cannot start the server on its own — it needs the LM Studio daemon
+        // (the app) to already be running. So we always launch the app first.
+        const launched = await this._launchLMStudio();
+        if (!launched) {
+            throw new Error('Could not launch LM Studio — is it installed at /usr/bin/lm-studio or /opt/lm-studio/?');
+        }
+
+        // Step 2: poll the API endpoint every 2 s for up to 90 s.
+        // Every 10 s we also fire 'lms server start' in case the app is up but its
+        // server didn't auto-start (happens when LM Studio was previously closed with
+        // the server off).
+        const lmsPaths = [GLib.get_home_dir() + '/.lmstudio/bin/lms', 'lms'];
+        const POLL_MS = 2000;
+        const MAX_POLLS = 45;
+
+        for (let poll = 1; poll <= MAX_POLLS; poll++) {
+            await new Promise(r => {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_MS, () => { r(); return GLib.SOURCE_REMOVE; });
+            });
+
+            // Every 5th poll (~10 s) try 'lms server start'; ignore errors if daemon not ready yet
+            if (poll % 5 === 0) {
+                for (const lmsPath of lmsPaths) {
+                    try {
+                        const proc = new Gio.Subprocess({
+                            argv: [lmsPath, 'server', 'start'],
+                            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+                        });
+                        proc.init(null);
+                        break;
+                    } catch (_e) {}
+                }
+            }
+
+            // Check if API is responding
+            try {
+                const sess = new Soup.Session();
+                sess.timeout = 2;
+                const msg = Soup.Message.new('GET', modelsUrl);
+                await new Promise((resolve, reject) => {
+                    sess.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (s, res) => {
+                        try { resolve(s.send_and_read_finish(res)); }
+                        catch (e) { reject(e); }
+                    });
+                });
+                if (msg.get_status() === 200) {
+                    Main.notify('LLM Text Pro', 'LM Studio ready — processing…');
+                    return this._callLocalAPI(prompt, text, true);
+                }
+            } catch (_e) { /* not ready yet */ }
+        }
+
+        throw new Error('LM Studio did not become ready within 90 s.');
     }
 
-    // ── CLI backends (Gemini / Claude) ───────────────────────────────────────
+    async _launchLMStudio() {
+        // Launch the LM Studio GUI app — known install locations on this system
+        const appCandidates = [
+            ['/usr/bin/lm-studio'],
+            ['/opt/lm-studio/lm-studio.AppImage'],
+            ['lm-studio'],
+            ['lmstudio'],
+            ['flatpak', 'run', 'ai.lmstudio.LMStudio'],
+        ];
+        for (const argv of appCandidates) {
+            try {
+                const proc = new Gio.Subprocess({ argv, flags: Gio.SubprocessFlags.NONE });
+                proc.init(null);
+                return true;
+            } catch (_e) {}
+        }
+        return false;
+    }
+
+    // ── CLI backends (Gemini / Claude / Copilot) ─────────────────────────────
 
     async _callCLI(cliType, prompt, text) {
         let cliPath, args;
@@ -789,8 +891,7 @@ export default class LLMTextProExtension extends Extension {
 
         const proc = new Gio.Subprocess({
             argv: args,
-            flags: Gio.SubprocessFlags.STDOUT_PIPE
-                 | Gio.SubprocessFlags.STDERR_PIPE,
+            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
         });
         proc.init(null);
 
@@ -799,13 +900,13 @@ export default class LLMTextProExtension extends Extension {
                 try {
                     const [, stdout, stderr] = p.communicate_utf8_finish(res);
                     const exit = p.get_exit_status();
-                    
+
                     const out = stdout?.trim();
                     const err = stderr?.trim();
-                    
+
                     let parsedJson = null;
                     let isJsonl = false;
-                    
+
                     if (out) {
                         try {
                             parsedJson = JSON.parse(out);
@@ -815,7 +916,7 @@ export default class LLMTextProExtension extends Extension {
                             }
                         }
                     }
-                    
+
                     if (exit !== 0) {
                         let errMsg = `${cliType} CLI exited with ${exit}`;
                         if (parsedJson && parsedJson.is_error && parsedJson.result) {
@@ -826,7 +927,7 @@ export default class LLMTextProExtension extends Extension {
                                 try {
                                     const j = JSON.parse(line);
                                     if (j.type === 'result' && j.is_error) errMsg = j.result;
-                                } catch(e){}
+                                } catch (_e) {}
                             }
                         } else if (err) {
                             errMsg = err;
@@ -836,61 +937,56 @@ export default class LLMTextProExtension extends Extension {
                         reject(new Error(errMsg));
                     } else {
                         if (!out) {
-                            if (err) {
-                                reject(new Error(`${cliType} stderr info: ${err}`));
-                            } else {
-                                reject(new Error(`${cliType} CLI returned empty output.`));
+                            reject(new Error(err
+                                ? `${cliType} stderr: ${err}`
+                                : `${cliType} CLI returned empty output.`));
+                        } else if (cliType === 'copilot' && isJsonl) {
+                            let text = '';
+                            let tokens = 0;
+                            let modelName = 'Copilot Default';
+                            for (const line of out.split('\n')) {
+                                try {
+                                    const j = JSON.parse(line);
+                                    if (j.type === 'assistant.message' && j.data?.content) {
+                                        text = j.data.content;
+                                        if (j.data.outputTokens) tokens = j.data.outputTokens;
+                                    }
+                                    if (j.type === 'session.tools_updated' && j.data?.model) {
+                                        modelName = j.data.model;
+                                    }
+                                } catch (_e) {}
                             }
-                        } else {
-                            if (cliType === 'copilot' && isJsonl) {
-                                let text = '';
+                            resolve({ text: text.trim(), info: `Model: ${modelName}` + (tokens > 0 ? `\nTokens: ${tokens}` : '') });
+                        } else if (parsedJson && !isJsonl) {
+                            let text = '';
+                            let info = '';
+                            if (cliType === 'gemini') {
+                                text = parsedJson.response || '';
+                                let modelName = 'Gemini Default';
                                 let tokens = 0;
-                                let modelName = 'Copilot Default';
-                                const lines = out.split('\n');
-                                for (const line of lines) {
-                                    try {
-                                        const j = JSON.parse(line);
-                                        if (j.type === 'assistant.message' && j.data && j.data.content) {
-                                            text = j.data.content;
-                                            if (j.data.outputTokens) tokens = j.data.outputTokens;
-                                        }
-                                        if (j.type === 'session.tools_updated' && j.data && j.data.model) {
-                                            modelName = j.data.model;
-                                        }
-                                    } catch(e){}
-                                }
-                                resolve({ text: text.trim(), info: `Model: ${modelName}` + (tokens > 0 ? `\nTokens: ${tokens}` : '') });
-                            } else if (parsedJson && !isJsonl) {
-                                let text = '';
-                                let info = '';
-                                if (cliType === 'gemini') {
-                                    text = parsedJson.response || '';
-                                    let modelName = 'Gemini Default';
-                                    let tokens = 0;
-                                    if (parsedJson.stats && parsedJson.stats.models) {
-                                        const models = Object.keys(parsedJson.stats.models);
-                                        if (models.length > 0) {
-                                            modelName = models[0];
-                                            tokens = parsedJson.stats.models[modelName].tokens?.total || 0;
-                                        }
+                                if (parsedJson.stats?.models) {
+                                    const models = Object.keys(parsedJson.stats.models);
+                                    if (models.length > 0) {
+                                        modelName = models[0];
+                                        tokens = parsedJson.stats.models[modelName].tokens?.total || 0;
                                     }
-                                    info = `Model: ${modelName}`;
-                                    if (tokens > 0) info += `\nTokens: ${tokens}`;
-                                } else {
-                                    text = parsedJson.result || '';
-                                    let tokens = (parsedJson.usage?.input_tokens || 0) + (parsedJson.usage?.output_tokens || 0);
-                                    let modelName = 'Claude Default';
-                                    if (parsedJson.modelUsage) {
-                                        const models = Object.keys(parsedJson.modelUsage);
-                                        if (models.length > 0) modelName = models[0];
-                                    }
-                                    info = `Model: ${modelName}`;
-                                    if (tokens > 0) info += `\nTokens: ${tokens}`;
                                 }
-                                resolve({ text: text.trim(), info });
+                                info = `Model: ${modelName}`;
+                                if (tokens > 0) info += `\nTokens: ${tokens}`;
                             } else {
-                                resolve({ text: out, info: 'Model: Default (Auto)' });
+                                text = parsedJson.result || '';
+                                let tokens = (parsedJson.usage?.input_tokens || 0) + (parsedJson.usage?.output_tokens || 0);
+                                let modelName = 'Claude Default';
+                                if (parsedJson.modelUsage) {
+                                    const models = Object.keys(parsedJson.modelUsage);
+                                    if (models.length > 0) modelName = models[0];
+                                }
+                                info = `Model: ${modelName}`;
+                                if (tokens > 0) info += `\nTokens: ${tokens}`;
                             }
+                            resolve({ text: text.trim(), info });
+                        } else {
+                            resolve({ text: out, info: 'Model: Default (Auto)' });
                         }
                     }
                 } catch (e) {
@@ -914,10 +1010,6 @@ export default class LLMTextProExtension extends Extension {
             vkbd.notify_keyval(t + 1, Clutter.KEY_Control_L, Clutter.KeyState.RELEASED);
         } catch (e) {
             console.warn('[LLM Text Pro] Auto-paste failed:', e.message);
-        }
-    }
-}
-ext Pro] Auto-paste failed:', e.message);
         }
     }
 }

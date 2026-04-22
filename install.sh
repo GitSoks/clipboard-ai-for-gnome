@@ -1,4 +1,4 @@
-#!/bin/bash
+<#!/bin/bash
 set -e
 
 EXT_UUID="llm-text-pro@sokolowski.at"

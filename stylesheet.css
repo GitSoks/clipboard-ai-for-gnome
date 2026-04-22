@@ -1,103 +1,91 @@
 /* LLM Text Pro — stylesheet.css */
 
-/* ── Panel icon ─────────────────────────────────────────────────────────── */
+/* ── Panel indicator ─────────────────────────────────────────────────────── */
 
-.llm-text-pro-icon {
-    font-size: 15px;
-    padding: 0 4px;
+.llm-panel-icon {
     transition-duration: 200ms;
-    transition-timing-function: ease-in-out;
     transition-property: color;
+    transition-timing-function: ease-out;
 }
 
-/* Spinning / active state — bright amber/orange */
-.llm-processing {
-    color: #ffb86c;
+.llm-icon-done {
+    color: #57e389;
 }
 
-/* Success state — green */
-.llm-done {
-    color: #50fa7b;
+.llm-icon-error {
+    color: #e01b24;
 }
 
-/* Error state — red */
-.llm-error {
-    color: #ff5555;
-}
-
-.llm-top-label {
+/* Spinner label (only visible during processing) */
+.llm-text-pro-icon {
     font-size: 13px;
-    font-weight: 700;
-    color: #f8f8f2;
-    padding-left: 6px;
-    transition: opacity 250ms ease;
+    padding: 0 2px;
 }
 
-/* ── Menu labels ────────────────────────────────────────────────────────── */
+.llm-processing {
+    color: #e5a50a;
+}
+
+/* ── Menu status row ─────────────────────────────────────────────────────── */
 
 .llm-status-label {
-    font-weight: bold;
-    color: #8be9fd;
-    font-size: 14px;
+    font-weight: 600;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
 }
+
+/* ── Hotkey badge ────────────────────────────────────────────────────────── */
 
 .llm-hotkey-hint {
-    font-size: 11px;
-    opacity: 0.8;
-    color: #bd93f9;
+    font-size: 10px;
     font-family: monospace;
-    background-color: rgba(189, 147, 249, 0.15);
+    color: rgba(255, 255, 255, 0.5);
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 4px;
-    padding: 2px 6px;
-    margin-left: 10px;
+    padding: 1px 5px;
+    margin-left: 8px;
 }
 
-/* ── Backend Slide Switch ───────────────────────────────────────────────── */
+/* ── Backend switcher row ────────────────────────────────────────────────── */
+
 .llm-backend-title {
-    font-size: 14px;
-    font-weight: bold;
-    color: #f8f8f2;
-    margin-right: 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
 }
 
 .llm-backend-switch-container {
-    padding: 4px;
-    background-color: rgba(0, 0, 0, 0.3);
-    border-radius: 10px;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    padding: 3px;
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .llm-backend-btn {
-    border-radius: 8px;
-    padding: 6px 12px;
-    font-size: 13px;
-    font-weight: bold;
-    color: #6272a4;
-    transition: all 200ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.38);
+    transition-duration: 100ms;
+    transition-property: background-color, color;
+    transition-timing-function: ease-out;
 }
 
 .llm-backend-btn:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: #f8f8f2;
+    background-color: rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.65);
 }
 
 .llm-backend-btn-active {
-    background-color: rgba(255, 255, 255, 0.15);
-    color: #f8f8f2;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.15);
+    background-color: rgba(255, 255, 255, 0.13);
+    color: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .llm-backend-btn-active:hover {
-    background-color: rgba(255, 255, 255, 0.22);
+    background-color: rgba(255, 255, 255, 0.17);
 }
-
-/* ── Action Items ── */
-.llm-action-item {
-    transition: background-color 150ms ease;
-    border-radius: 6px;
-    margin: 2px 4px;
-}
-.llm-action-item:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-

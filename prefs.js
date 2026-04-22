@@ -12,6 +12,77 @@ import GObject from 'gi://GObject';
 import Soup from 'gi://Soup';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Default actions — used on fresh install and by the "Reset to Defaults" button
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DEFAULT_ACTIONS = [
+    {
+        id: 'fix-grammar', name: 'Fix Grammar', hotkey: '<Control><Alt>g', enabled: true, backend: 'default',
+        prompt: "You are a precise grammar and spelling correction tool. Fix all grammar, spelling, and punctuation errors in the following text. Preserve the original wording, tone, and style — only correct mistakes. Return ONLY the corrected text, with no explanation or preamble.",
+    },
+    {
+        id: 'improve-text', name: 'Improve Text', hotkey: '<Control><Alt>i', enabled: true, backend: 'default',
+        prompt: "You are an expert editor. Improve the following text for clarity, flow, and impact. Fix awkward phrasing and tighten the language while preserving the original voice and all key information. Return ONLY the improved text, with no explanation or preamble.",
+    },
+    {
+        id: 'humanize-text', name: 'Remove AI Patterns', hotkey: '<Control><Alt>h', enabled: true, backend: 'default',
+        prompt: "You are a skilled human editor who specializes in making AI-generated text sound authentically human. Rewrite the following text by doing all of the following:\n\n- Remove sycophantic and formulaic openers: \"Certainly!\", \"Of course!\", \"Great question!\", \"I would be happy to\", \"It is important to note\", \"In conclusion\", \"To summarize\"\n- Cut unnecessary hedging and filler: \"basically\", \"essentially\", \"ultimately\", \"at the end of the day\", \"it goes without saying\"\n- Replace hollow buzzwords: \"leverage\" → use, \"utilize\" → use, \"actionable\" → practical, \"seamless\" → smooth, \"robust\" → strong\n- Vary sentence length and structure so the text flows naturally\n- Convert unnecessary bullet lists back into natural prose\n- Keep every piece of factual content and the core message intact\n\nReturn ONLY the rewritten text, with no explanation or preamble.",
+    },
+    {
+        id: 'make-professional', name: 'Make Professional', hotkey: '', enabled: true, backend: 'default',
+        prompt: "Rewrite the following text in a polished, professional, and business-appropriate tone. Keep all original information intact. Return ONLY the rewritten text, with no explanation or preamble.",
+    },
+    {
+        id: 'make-casual', name: 'Make Casual', hotkey: '', enabled: true, backend: 'default',
+        prompt: "Rewrite the following text in a warm, friendly, and conversational tone — as if written to a colleague or friend. Keep the full meaning intact. Return ONLY the rewritten text, with no explanation or preamble.",
+    },
+    {
+        id: 'fix-tone', name: 'Fix Tone', hotkey: '', enabled: true, backend: 'default',
+        prompt: "Rewrite the following text to be polite, respectful, and constructive while fully preserving the intended message. Remove any aggression, frustration, or harshness. Return ONLY the rewritten text, with no explanation or preamble.",
+    },
+    {
+        id: 'reply-message', name: 'Reply to Message / Mail', hotkey: '<Control><Alt>m', enabled: true, backend: 'default',
+        prompt: "You are an expert communicator. Read the following message or email and write a complete, ready-to-send reply. Match the formality and tone of the original. Be clear, concise, and address every point raised. Do not add a subject line. Output ONLY the reply text — no introduction, no explanation, no markdown.",
+    },
+    {
+        id: 'translate', name: 'Translate DE ↔ EN', hotkey: '<Control><Alt>t', enabled: true, backend: 'default',
+        prompt: "Detect the language of the following text. If it is German, translate it to English. If it is English, translate it to German. Preserve the tone, formality, and style of the original. Return ONLY the translated text, with no explanation or preamble.",
+    },
+    {
+        id: 'translate-pl', name: 'Translate DE ↔ PL', hotkey: '<Control><Alt>p', enabled: true, backend: 'default',
+        prompt: "Detect the language of the following text. If it is German, translate it to Polish. If it is Polish, translate it to German. If the text mixes both languages, translate everything to whichever language appears less. Preserve the tone, formality, and style of the original. Return ONLY the translated text, with no explanation or preamble.",
+    },
+    {
+        id: 'summarize', name: 'Summarize', hotkey: '', enabled: true, backend: 'default',
+        prompt: "Summarize the following text into its key points. Be concise — capture the essential information while losing nothing important. Return ONLY the summary, with no introduction or explanation.",
+    },
+    {
+        id: 'bullet-points', name: 'Bullet Points', hotkey: '', enabled: true, backend: 'default',
+        prompt: "Convert the following text into a clear, well-organized bullet list. Capture every key point. Use the • character for bullets. Return ONLY the bullet list, with no introduction or explanation.",
+    },
+    {
+        id: 'keywords-to-text', name: 'Write from Keywords', hotkey: '<Control><Alt>k', enabled: true, backend: 'default',
+        prompt: "You are a skilled writer. The input below is a list of keywords, bullet points, or rough notes. Expand them into a well-structured, coherent, and natural-sounding text. Preserve all key ideas and choose an appropriate length and style based on the content. Return ONLY the written text, with no preamble or explanation.",
+    },
+    {
+        id: 'expand-text', name: 'Expand Text', hotkey: '', enabled: true, backend: 'default',
+        prompt: "Expand the following text by adding more detail, context, and depth while staying true to the original meaning and tone. Do not change the subject or add unrelated information. Return ONLY the expanded text, with no explanation or preamble.",
+    },
+    {
+        id: 'add-emojis', name: 'Add Emojis', hotkey: '', enabled: true, backend: 'default',
+        prompt: "Add relevant and fitting emojis to the following text to make it more expressive and lively. Place emojis naturally inline or at the end of sentences where they feel right. Use at most one emoji per sentence or idea. Keep all original text intact. Return ONLY the emoji-enhanced text, with no explanation or preamble.",
+    },
+    {
+        id: 'explain-code', name: 'Explain Code', hotkey: '', enabled: true, backend: 'default',
+        prompt: "You are a senior software engineer. Explain what the following code does — its purpose, how it works, and any important details or gotchas. Be clear and concise. Use markdown formatting.",
+    },
+    {
+        id: 'refactor-code', name: 'Refactor Code', hotkey: '', enabled: true, backend: 'default',
+        prompt: "You are an expert software engineer. Refactor the following code to be cleaner, more readable, and more efficient. Preserve the exact behavior. Output ONLY the refactored code, without markdown code blocks or any explanation.",
+    },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,7 +141,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
     _buildBackendPage(settings) {
         const page = new Adw.PreferencesPage({
             title: 'Backend',
-            icon_name: 'network-server-symbolic',
+            icon_name: 'applications-science-symbolic',
         });
 
         // ── Active backend chooser ──
@@ -94,7 +165,8 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         // ── Local API ──
         const localGroup = new Adw.PreferencesGroup({
-            title: '🖥  Local API  (Ollama / LM Studio / OpenAI-compatible)',
+            title: 'Local API',
+            description: 'Ollama, LM Studio, or any OpenAI-compatible endpoint.',
         });
         page.add(localGroup);
         localGroup.add(makeEntry('API Endpoint', settings, 'api-endpoint'));
@@ -103,7 +175,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         // ── Gemini CLI ──
         const geminiGroup = new Adw.PreferencesGroup({
-            title: '🔷  Gemini CLI',
+            title: 'Gemini CLI',
             description: 'Requires the Google Gemini CLI installed and authenticated.',
         });
         page.add(geminiGroup);
@@ -129,7 +201,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         // ── Claude CLI ──
         const claudeGroup = new Adw.PreferencesGroup({
-            title: '🤖  Claude CLI',
+            title: 'Claude CLI',
             description: 'Requires Claude Code CLI ("claude") installed and authenticated.',
         });
         page.add(claudeGroup);
@@ -152,7 +224,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         // ── Copilot CLI ──
         const copilotGroup = new Adw.PreferencesGroup({
-            title: '🐙  Copilot CLI',
+            title: 'Copilot CLI',
             description: 'Requires GitHub Copilot CLI ("copilot") installed and authenticated.',
         });
         page.add(copilotGroup);
@@ -306,219 +378,368 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
     _buildActionsPage(settings, window) {
         const page = new Adw.PreferencesPage({
             title: 'Actions',
-            icon_name: 'applications-utilities-symbolic',
+            icon_name: 'document-edit-symbolic',
         });
 
-        const topGroup = new Adw.PreferencesGroup({
-            title: 'Text Actions',
-            description: 'Each action runs an AI prompt on your clipboard text. Enable/disable, edit prompts, set hotkeys, and choose the backend per-action.',
-        });
-        page.add(topGroup);
+        // Store refs used by sub-methods
+        this._actionsSettings = settings;
+        this._actionsWindow   = window;
 
-        // Container that holds one expander-row per action
-        this._actionsGroup = topGroup;
-        this._settings = settings;
-        this._window = window;
-        this._rebuildActionsUI(settings, topGroup);
+        // CSS for slide-in animation and disabled-row dimming
+        const css = new Gtk.CssProvider();
+        css.load_from_string(
+            '.llm-new-row{animation:llm-in 220ms ease-out both;}' +
+            '@keyframes llm-in{from{opacity:0;margin-top:-10px}to{opacity:1;margin-top:0}}' +
+            '.llm-row-disabled .title,.llm-row-disabled .subtitle{opacity:0.4;}'
+        );
+        Gtk.StyleContext.add_provider_for_display(
+            window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        );
 
-        // ── Add Action button ──
-        const addGroup = new Adw.PreferencesGroup();
-        page.add(addGroup);
-        const addRow = new Adw.ButtonRow({ title: '+ Add New Action', start_icon_name: 'list-add-symbolic' });
+        // ── Action list group ──
+        this._actionsListGroup = new Adw.PreferencesGroup({ title: 'Text Actions' });
+        page.add(this._actionsListGroup);
+        this._rebuildActionsUI();
+
+        // ── Buttons ──
+        const btnGroup = new Adw.PreferencesGroup();
+        page.add(btnGroup);
+
+        const addRow = new Adw.ButtonRow({ title: 'Add New Action', start_icon_name: 'list-add-symbolic' });
         addRow.add_css_class('suggested-action');
-        addRow.connect('activated', () => {
-            this._showActionEditor(settings, null, () => this._rebuildActionsUI(settings, topGroup));
+        addRow.connect('activated', () => this._openActionDialog(null));
+        btnGroup.add(addRow);
+
+        const resetRow = new Adw.ButtonRow({ title: 'Reset to Defaults', start_icon_name: 'document-revert-symbolic' });
+        resetRow.add_css_class('destructive-action');
+        resetRow.connect('activated', () => {
+            const dlg = new Adw.AlertDialog({
+                heading: 'Reset to Default Actions?',
+                body: 'All current actions will be replaced with the built-in defaults. Any custom changes will be permanently lost.',
+            });
+            dlg.add_response('cancel', 'Cancel');
+            dlg.add_response('reset', 'Reset');
+            dlg.set_response_appearance('reset', Adw.ResponseAppearance.DESTRUCTIVE);
+            dlg.connect('response', (_d, resp) => {
+                if (resp === 'reset') {
+                    settings.set_string('actions-json', JSON.stringify(DEFAULT_ACTIONS));
+                    this._rebuildActionsUI();
+                }
+            });
+            dlg.present(window);
         });
-        addGroup.add(addRow);
+        btnGroup.add(resetRow);
 
         return page;
     }
 
-    _rebuildActionsUI(settings, group) {
-        // Remove all existing action rows (keep only the first description-like item)
-        const children = [];
-        let child = group.get_first_child();
-        while (child) {
-            children.push(child);
-            child = child.get_next_sibling();
-        }
-        // We rebuild by using Adw.ActionRow widgets tagged with a marker
-        // Actually, since Adw.PreferencesGroup doesn't have a clean remove_all,
-        // we'll re-add everything to a fresh group. A simpler approach:
-        // Store action rows in an array and use a Gtk.ListBox inside the group.
+    _rebuildActionsUI(animateLastRow = false) {
+        const settings = this._actionsSettings;
+        const group    = this._actionsListGroup;
+        const actions  = this._parseActions(settings);
+        const n = actions.length;
 
-        // For simplicity we use ExpanderRow per action and track them manually
-        // by clearing child widgets via the group's internal list box.
-        const listBox = this._getGroupListBox(group);
-        if (listBox) {
-            let row = listBox.get_first_child();
+        group.set_description(
+            `${n} action${n !== 1 ? 's' : ''} — click any row to edit`
+        );
+
+        // Remove only rows we added (tagged with _llmRow)
+        const lb = this._getGroupListBox(group);
+        if (lb) {
+            let row = lb.get_first_child();
             while (row) {
                 const next = row.get_next_sibling();
-                // Only remove rows we added (not the header row the Adw group adds)
-                if (row._llmActionRow) listBox.remove(row);
+                if (row._llmRow) lb.remove(row);
                 row = next;
             }
         }
 
-        const actions = this._parseActions(settings);
         actions.forEach((action, index) => {
-            const expRow = this._makeActionRow(action, index, settings, group);
-            expRow._llmActionRow = true;
-            group.add(expRow);
+            const row = this._makeActionRow(action, index);
+            row._llmRow = true;
+            if (animateLastRow && index === n - 1) row.add_css_class('llm-new-row');
+            group.add(row);
         });
     }
 
     _getGroupListBox(group) {
-        // Adw.PreferencesGroup contains a GtkBox > GtkListBox internally
-        let child = group.get_first_child();
-        while (child) {
-            if (child.constructor?.name === 'GtkListBox' || child instanceof Gtk.ListBox) {
-                return child;
+        // Walk up to 3 levels deep to find Adw.PreferencesGroup's internal GtkListBox
+        const search = (widget, depth) => {
+            if (!widget || depth > 3) return null;
+            if (widget instanceof Gtk.ListBox) return widget;
+            let child = widget.get_first_child?.();
+            while (child) {
+                const found = search(child, depth + 1);
+                if (found) return found;
+                child = child.get_next_sibling?.();
             }
-            // Check children of child
-            let inner = child.get_first_child?.();
-            while (inner) {
-                if (inner instanceof Gtk.ListBox) return inner;
-                inner = inner.get_next_sibling?.();
-            }
-            child = child.get_next_sibling();
-        }
-        return null;
+            return null;
+        };
+        return search(group, 0);
     }
 
-    _makeActionRow(action, index, settings, parentGroup) {
-        const expRow = new Adw.ExpanderRow({
-            title: action.name,
-            subtitle: action.hotkey || 'No hotkey',
-            show_enable_switch: true,
-            enable_expansion: action.enabled,
-        });
-        expRow.connect('notify::enable-expansion', () => {
-            action.enabled = expRow.get_enable_expansion();
+    _getIconForAction(action) {
+        const idMap = {
+            'fix-grammar':       'tools-check-spelling-symbolic',
+            'improve-text':      'go-up-symbolic',
+            'humanize-text':     'user-available-symbolic',
+            'make-professional': 'mail-send-symbolic',
+            'make-casual':       'face-smile-symbolic',
+            'fix-tone':          'dialog-information-symbolic',
+            'reply-message':     'mail-reply-sender-symbolic',
+            'translate':         'accessories-dictionary-symbolic',
+            'translate-pl':      'accessories-dictionary-symbolic',
+            'summarize':         'document-properties-symbolic',
+            'bullet-points':     'view-list-bullet-symbolic',
+            'keywords-to-text':  'document-new-symbolic',
+            'expand-text':       'list-add-symbolic',
+            'add-emojis':        'face-wink-symbolic',
+            'explain-code':      'dialog-question-symbolic',
+            'refactor-code':     'utilities-terminal-symbolic',
+        };
+        if (action.id && idMap[action.id]) return idMap[action.id];
+        const name = (action.name || '').toLowerCase();
+        if (name.includes('grammar') || name.includes('spell')) return 'tools-check-spelling-symbolic';
+        if (name.includes('translat'))   return 'accessories-dictionary-symbolic';
+        if (name.includes('code') || name.includes('refactor')) return 'utilities-terminal-symbolic';
+        if (name.includes('reply') || name.includes('mail'))    return 'mail-reply-sender-symbolic';
+        if (name.includes('emoji'))      return 'face-wink-symbolic';
+        return 'document-edit-symbolic';
+    }
+
+    _makeActionRow(action, index) {
+        const settings = this._actionsSettings;
+
+        // Build subtitle: hotkey + optional backend override
+        const parts = [
+            action.hotkey || null,
+            (action.backend && action.backend !== 'default') ? action.backend : null,
+        ].filter(Boolean);
+        const subtitle = parts.length ? parts.join(' · ') : 'No hotkey';
+
+        const row = new Adw.ActionRow({ title: action.name, subtitle, activatable: true });
+        if (!action.enabled) row.add_css_class('llm-row-disabled');
+
+        // Leading icon
+        row.add_prefix(new Gtk.Image({
+            icon_name: this._getIconForAction(action),
+            pixel_size: 16,
+            css_classes: ['dim-label'],
+            valign: Gtk.Align.CENTER,
+        }));
+
+        // Enable/disable toggle — clicks handled by switch, won't fire row activation
+        const toggle = new Gtk.Switch({ valign: Gtk.Align.CENTER, active: action.enabled });
+        toggle.connect('notify::active', () => {
+            action.enabled = toggle.get_active();
+            if (action.enabled) row.remove_css_class('llm-row-disabled');
+            else                row.add_css_class('llm-row-disabled');
             this._saveAction(settings, action, index);
         });
+        row.add_suffix(toggle);
 
-        // ── Name entry ──
-        const nameRow = new Adw.EntryRow({ title: 'Action Name', text: action.name });
-        nameRow.connect('notify::text', () => {
-            action.name = nameRow.get_text();
-            expRow.set_title(action.name);
-            this._saveAction(settings, action, index);
-        });
-        expRow.add_row(nameRow);
+        // Trailing chevron — indicates the row opens an editor
+        row.add_suffix(new Gtk.Image({
+            icon_name: 'go-next-symbolic',
+            pixel_size: 16,
+            css_classes: ['dim-label'],
+            valign: Gtk.Align.CENTER,
+        }));
 
-        // ── Hotkey entry ──
-        const hotkeyRow = new Adw.EntryRow({
-            title: 'Hotkey',
-            text: action.hotkey || '',
-        });
-        const hotkeyHint = new Adw.ActionRow({
-            title: '',
-            subtitle: 'Format: <Control><Super>o  ·  Leave blank to disable.',
-            selectable: false,
-            activatable: false,
-        });
-        hotkeyRow.connect('notify::text', () => {
-            action.hotkey = hotkeyRow.get_text().trim();
-            expRow.set_subtitle(action.hotkey || 'No hotkey');
-            this._saveAction(settings, action, index);
-        });
-        expRow.add_row(hotkeyRow);
-        expRow.add_row(hotkeyHint);
+        row.connect('activated', () => this._openActionDialog(index));
+        return row;
+    }
 
-        // ── Backend override ──
+    _openActionDialog(index) {
+        const settings = this._actionsSettings;
+        const isNew    = index === null || index === undefined;
+        const action   = isNew
+            ? { id: `custom-${Date.now()}`, name: '', prompt: 'Transform the following text. Return ONLY the result, with no explanation or preamble.', hotkey: '', enabled: true, backend: 'default' }
+            : { ...this._parseActions(settings)[index] };
+
+        // ── Dialog shell ──
+        const dialog = new Adw.Dialog({
+            title: isNew ? 'New Action' : 'Edit Action',
+            content_width: 520,
+            content_height: 640,
+        });
+
+        const toolbarView = new Adw.ToolbarView();
+        dialog.set_child(toolbarView);
+
+        const hbar = new Adw.HeaderBar();
+        toolbarView.add_top_bar(hbar);
+
+        const cancelBtn = new Gtk.Button({ label: 'Cancel' });
+        cancelBtn.connect('clicked', () => dialog.close());
+        hbar.pack_start(cancelBtn);
+
+        const saveBtn = new Gtk.Button({
+            label: isNew ? 'Add' : 'Save',
+            css_classes: ['suggested-action'],
+        });
+        hbar.pack_end(saveBtn);
+
+        // ── Scrollable body ──
+        const scroll = new Gtk.ScrolledWindow({
+            vexpand: true,
+            hscrollbar_policy: Gtk.PolicyType.NEVER,
+        });
+        toolbarView.set_content(scroll);
+
+        const body = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 20,
+            margin_start: 12,
+            margin_end: 12,
+            margin_top: 12,
+            margin_bottom: 24,
+        });
+        scroll.set_child(body);
+
+        // ── Settings group ──
+        const settingsGroup = new Adw.PreferencesGroup({ title: 'Settings' });
+        body.append(settingsGroup);
+
+        const nameRow = new Adw.EntryRow({ title: 'Name', text: action.name });
+        settingsGroup.add(nameRow);
+
+        const hotkeyRow = new Adw.EntryRow({ title: 'Hotkey', text: action.hotkey || '' });
+        hotkeyRow.add_suffix(new Gtk.Image({
+            icon_name: 'dialog-question-symbolic',
+            pixel_size: 14,
+            css_classes: ['dim-label'],
+            valign: Gtk.Align.CENTER,
+            tooltip_text: 'Format: <Control><Alt>g  or  <Shift><Super>t\nLeave blank to disable the hotkey.',
+        }));
+        settingsGroup.add(hotkeyRow);
+
+        const enabledRow = new Adw.SwitchRow({
+            title: 'Enabled',
+            subtitle: 'Show in tray menu and respond to hotkey',
+            active: action.enabled,
+        });
+        settingsGroup.add(enabledRow);
+
         const backendRow = new Adw.ComboRow({
             title: 'Backend',
-            subtitle: 'Override the global backend for this action.',
+            subtitle: 'Override the global backend for this action only',
             model: new Gtk.StringList({ strings: ['Default (global)', 'Local API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI'] }),
         });
         const bkKeys = ['default', 'local', 'gemini-cli', 'claude-cli', 'copilot-cli'];
         backendRow.set_selected(Math.max(0, bkKeys.indexOf(action.backend || 'default')));
-        backendRow.connect('notify::selected', () => {
-            action.backend = bkKeys[backendRow.get_selected()];
-            this._saveAction(settings, action, index);
-        });
-        expRow.add_row(backendRow);
+        settingsGroup.add(backendRow);
 
-        // ── Prompt editor ──
-        const promptExpRow = new Adw.ExpanderRow({ title: 'System Prompt', subtitle: 'Click to edit' });
+        // ── Prompt section ──
+        const promptSection = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 8 });
+        body.append(promptSection);
+
+        // Section header (mimics Adw.PreferencesGroup header style)
+        const promptHeader = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 2, margin_start: 6 });
+        promptHeader.append(new Gtk.Label({
+            label: 'System Prompt',
+            halign: Gtk.Align.START,
+            css_classes: ['title-4'],
+        }));
+        promptHeader.append(new Gtk.Label({
+            label: 'Instructions sent to the AI along with the clipboard text.',
+            halign: Gtk.Align.START,
+            wrap: true,
+            css_classes: ['dim-label', 'caption'],
+        }));
+        promptSection.append(promptHeader);
+
+        // Text area inside a card
         const buffer = new Gtk.TextBuffer();
-        buffer.set_text(action.prompt, -1);
-        buffer.connect('changed', () => {
-            const [s, e] = buffer.get_bounds();
-            action.prompt = buffer.get_text(s, e, false);
-            this._saveAction(settings, action, index);
-        });
+        buffer.set_text(action.prompt || '', -1);
+
         const textView = new Gtk.TextView({
             buffer,
             wrap_mode: Gtk.WrapMode.WORD_CHAR,
-            vexpand: true,
-            hexpand: true,
-            height_request: 120,
-            margin_top: 6,
-            margin_bottom: 6,
-            margin_start: 12,
-            margin_end: 12,
+            accepts_tab: false,
+            top_margin: 10,
+            bottom_margin: 10,
+            left_margin: 12,
+            right_margin: 12,
         });
-        const scrolled = new Gtk.ScrolledWindow({
+
+        const promptCard = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            css_classes: ['card'],
+            overflow: Gtk.Overflow.HIDDEN,
+        });
+        promptCard.append(new Gtk.ScrolledWindow({
             child: textView,
-            has_frame: false,
+            vexpand: true,
             hscrollbar_policy: Gtk.PolicyType.NEVER,
-            vscrollbar_policy: Gtk.PolicyType.AUTOMATIC,
-            height_request: 130,
-        });
-        promptExpRow.add_row(scrolled);
-        expRow.add_row(promptExpRow);
+            height_request: 210,
+        }));
+        promptSection.append(promptCard);
 
-        // ── Delete button ──
-        const deleteRow = new Adw.ButtonRow({
-            title: 'Delete This Action',
-            start_icon_name: 'user-trash-symbolic',
-        });
-        deleteRow.add_css_class('destructive-action');
-        deleteRow.connect('activated', () => {
-            const actions = this._parseActions(settings);
-            actions.splice(index, 1);
-            settings.set_string('actions-json', JSON.stringify(actions));
-            this._rebuildActionsUI(settings, parentGroup);
-        });
-        expRow.add_row(deleteRow);
+        // ── Delete zone (existing actions only) ──
+        if (!isNew) {
+            const dangerGroup = new Adw.PreferencesGroup();
+            body.append(dangerGroup);
 
-        return expRow;
-    }
-
-    _showActionEditor(settings, action, onSave) {
-        // For adding new actions, use a dialog approach
-        const isNew = !action;
-        if (isNew) {
-            action = {
-                id: `custom-${Date.now()}`,
-                name: 'New Action',
-                prompt: 'Transform the following text. Return *only* the result, with no explanation or markdown.',
-                hotkey: '',
-                enabled: true,
-                backend: 'default',
-            };
-            const actions = this._parseActions(settings);
-            actions.push(action);
-            settings.set_string('actions-json', JSON.stringify(actions));
-            onSave?.();
+            const delRow = new Adw.ButtonRow({ title: 'Delete Action', start_icon_name: 'user-trash-symbolic' });
+            delRow.add_css_class('destructive-action');
+            delRow.connect('activated', () => {
+                const confirm = new Adw.AlertDialog({
+                    heading: 'Delete Action?',
+                    body: `"${action.name}" will be permanently removed.`,
+                });
+                confirm.add_response('cancel', 'Cancel');
+                confirm.add_response('delete', 'Delete');
+                confirm.set_response_appearance('delete', Adw.ResponseAppearance.DESTRUCTIVE);
+                confirm.connect('response', (_d, resp) => {
+                    if (resp !== 'delete') return;
+                    dialog.close();
+                    const acts = this._parseActions(settings);
+                    acts.splice(index, 1);
+                    settings.set_string('actions-json', JSON.stringify(acts));
+                    this._rebuildActionsUI();
+                });
+                confirm.present(dialog);
+            });
+            dangerGroup.add(delRow);
         }
+
+        // ── Save handler ──
+        saveBtn.connect('clicked', () => {
+            const name = nameRow.get_text().trim();
+            if (!name) {
+                nameRow.add_css_class('error');
+                nameRow.grab_focus();
+                return;
+            }
+            nameRow.remove_css_class('error');
+            const [s, e] = buffer.get_bounds();
+            action.name    = name;
+            action.hotkey  = hotkeyRow.get_text().trim();
+            action.enabled = enabledRow.get_active();
+            action.backend = bkKeys[backendRow.get_selected()];
+            action.prompt  = buffer.get_text(s, e, false);
+
+            const acts = this._parseActions(settings);
+            if (isNew) acts.push(action); else acts[index] = action;
+            settings.set_string('actions-json', JSON.stringify(acts));
+            this._rebuildActionsUI(isNew);
+            dialog.close();
+        });
+
+        dialog.present(this._actionsWindow);
     }
 
     _parseActions(settings) {
-        try {
-            return JSON.parse(settings.get_string('actions-json'));
-        } catch (_) {
-            return [];
-        }
+        try { return JSON.parse(settings.get_string('actions-json')); }
+        catch (_) { return []; }
     }
 
     _saveAction(settings, updatedAction, index) {
-        const actions = this._parseActions(settings);
-        if (index >= 0 && index < actions.length) {
-            actions[index] = updatedAction;
-            settings.set_string('actions-json', JSON.stringify(actions));
+        const acts = this._parseActions(settings);
+        if (index >= 0 && index < acts.length) {
+            acts[index] = updatedAction;
+            settings.set_string('actions-json', JSON.stringify(acts));
         }
     }
 
@@ -622,10 +843,10 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         const backendGroup = new Adw.PreferencesGroup({
             title: 'Backend Setup',
             description:
-                '🖥 Local API: Start Ollama (ollama serve) or LM Studio, then set the endpoint to http://127.0.0.1:11434/v1/chat/completions (Ollama) or http://127.0.0.1:1234/v1/chat/completions (LM Studio).\n\n' +
-                '🔷 Gemini CLI: Install via  npm install -g @google/gemini-cli  then run  gemini  once to authenticate.\n\n' +
-                '🤖 Claude CLI: Install Claude Code from https://claude.ai/code then run  claude  once to authenticate.\n\n' +
-                '🐙 Copilot CLI: Use GitHub Copilot CLI via   copilot   (experimental).',
+                'Local API: Start Ollama (ollama serve) or LM Studio, then set the endpoint to http://127.0.0.1:11434/v1/chat/completions (Ollama) or http://127.0.0.1:1234/v1/chat/completions (LM Studio).\n\n' +
+                'Gemini CLI: Install via  npm install -g @google/gemini-cli  then run  gemini  once to authenticate.\n\n' +
+                'Claude CLI: Install Claude Code from https://claude.ai/code then run  claude  once to authenticate.\n\n' +
+                'Copilot CLI: Use GitHub Copilot CLI via  copilot  (experimental).',
         });
         page.add(backendGroup);
 
