@@ -1,0 +1,77 @@
+/* LLM Text Pro — stylesheet.css */
+
+/* ── Panel icon ─────────────────────────────────────────────────────────── */
+
+.llm-text-pro-icon {
+    font-size: 15px;
+    padding: 0 3px;
+    transition-duration: 200ms;
+    transition-timing-function: ease-in-out;
+    transition-property: color;
+}
+
+/* Spinning / active state — bright amber */
+.llm-processing {
+    color: #f0a020;
+}
+
+/* Success state — green */
+.llm-done {
+    color: #56d364;
+}
+
+/* Error state — red */
+.llm-error {
+    color: #f85149;
+}
+
+.llm-top-label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #a0a0a0;
+}
+
+/* ── Menu labels ────────────────────────────────────────────────────────── */
+
+.llm-status-label {
+    font-weight: bold;
+    color: #888888;
+}
+
+.llm-hotkey-hint {
+    font-size: 10px;
+    opacity: 0.55;
+    padding-right: 4px;
+}
+
+/* ── Backend Slide Switch ───────────────────────────────────────────────── */
+.llm-backend-switch-container {
+    padding: 4px 6px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+.llm-backend-btn {
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #aaaaaa;
+    transition-duration: 150ms;
+}
+
+.llm-backend-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+}
+
+.llm-backend-btn-active {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.llm-backend-btn-active:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
