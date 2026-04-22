@@ -82,9 +82,9 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         const backendRow = new Adw.ComboRow({
             title: 'Backend',
-            model: new Gtk.StringList({ strings: ['Local API', 'Gemini CLI', 'Claude CLI'] }),
+            model: new Gtk.StringList({ strings: ['Local API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI'] }),
         });
-        const backendKeys = ['local', 'gemini-cli', 'claude-cli'];
+        const backendKeys = ['local', 'gemini-cli', 'claude-cli', 'copilot-cli'];
         const currentBackend = settings.get_string('backend');
         backendRow.set_selected(Math.max(0, backendKeys.indexOf(currentBackend)));
         backendRow.connect('notify::selected', () => {
@@ -147,6 +147,26 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 'claude-sonnet-4-6',
                 'claude-opus-4-6',
                 'claude-haiku-4-5-20251001'
+            ]
+        ));
+
+        // ── Copilot CLI ──
+        const copilotGroup = new Adw.PreferencesGroup({
+            title: '🐙  Copilot CLI',
+            description: 'Requires GitHub Copilot CLI ("copilot") installed and authenticated.',
+        });
+        page.add(copilotGroup);
+        copilotGroup.add(makeEntry('CLI Binary Path', settings, 'copilot-cli-path'));
+        copilotGroup.add(this._makeModelEntryWithPresets(
+            'Copilot Model',
+            settings,
+            'copilot-model',
+            [
+                'Default (Auto)',
+                'gpt-4o',
+                'claude-3.5-sonnet',
+                'gpt-4',
+                'gpt-3.5-turbo'
             ]
         ));
 
@@ -410,9 +430,9 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         const backendRow = new Adw.ComboRow({
             title: 'Backend',
             subtitle: 'Override the global backend for this action.',
-            model: new Gtk.StringList({ strings: ['Default (global)', 'Local API', 'Gemini CLI', 'Claude CLI'] }),
+            model: new Gtk.StringList({ strings: ['Default (global)', 'Local API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI'] }),
         });
-        const bkKeys = ['default', 'local', 'gemini-cli', 'claude-cli'];
+        const bkKeys = ['default', 'local', 'gemini-cli', 'claude-cli', 'copilot-cli'];
         backendRow.set_selected(Math.max(0, bkKeys.indexOf(action.backend || 'default')));
         backendRow.connect('notify::selected', () => {
             action.backend = bkKeys[backendRow.get_selected()];
@@ -524,6 +544,13 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             'auto-check-quota'
         ));
 
+        apiGroup.add(makeSwitchRow(
+            'Auto-Start LM Studio',
+            'If your Local API connection fails, automatically attempt to launch the LM Studio server in the background.',
+            settings,
+            'auto-start-lms'
+        ));
+
         // ── UI & Behaviour ──
         const behavGroup = new Adw.PreferencesGroup({ 
             title: 'UI & Behaviour',
@@ -575,7 +602,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         const infoRow = new Adw.ActionRow({
             title: 'LLM Text Pro',
-            subtitle: 'v10 — Built by David Sokolowski\nBased on "LLM Text Modifier" by Rishabh Bajpai',
+            subtitle: 'v11 — Built by David Sokolowski\nBased on "LLM Text Modifier" by Rishabh Bajpai',
             selectable: false,
         });
         group.add(infoRow);
@@ -597,7 +624,8 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             description:
                 '🖥 Local API: Start Ollama (ollama serve) or LM Studio, then set the endpoint to http://127.0.0.1:11434/v1/chat/completions (Ollama) or http://127.0.0.1:1234/v1/chat/completions (LM Studio).\n\n' +
                 '🔷 Gemini CLI: Install via  npm install -g @google/gemini-cli  then run  gemini  once to authenticate.\n\n' +
-                '🤖 Claude CLI: Install Claude Code from https://claude.ai/code then run  claude  once to authenticate.',
+                '🤖 Claude CLI: Install Claude Code from https://claude.ai/code then run  claude  once to authenticate.\n\n' +
+                '🐙 Copilot CLI: Use GitHub Copilot CLI via   copilot   (experimental).',
         });
         page.add(backendGroup);
 

@@ -4,5 +4,5 @@
   "uuid": "llm-text-pro@sokolowski.at",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
   "settings-schema": "org.gnome.shell.extensions.llm-text-pro",
-  "version": 10
+  "version": 11
 }

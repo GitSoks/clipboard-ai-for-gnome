@@ -10,10 +10,11 @@ LLM Text Pro is a powerful, customizable GNOME Shell Extension that lets you ins
 
 ## Features
 
-- **Multiple AI Backends:** Seamlessly switch between Local AI (Ollama, LM Studio, or any OpenAI-compatible API), Google's **Gemini CLI**, and Anthropic's **Claude CLI**.
+- **Multiple AI Backends:** Seamlessly switch between Local AI (Ollama, LM Studio, or any OpenAI-compatible API), Google's **Gemini CLI**, Anthropic's **Claude CLI**, and GitHub's **Copilot CLI**.
 - **Live Status & Quota Monitoring:** The animated tray icon displays real-time processing status. It also features a built-in background quota checker that silently pings your API to warn you if you hit rate limits, and dynamically displays loaded local models right in your top bar!
-- **Dynamic Model Selection:** Easily fetch available models from your Local AI instance, or choose from up-to-date presets for Gemini and Claude. Supports `Default (Auto)` to defer to your CLI's native configuration.
-- **Customizable Actions:** Create unlimited custom prompts (e.g., "Summarize", "Make Formal", "Translate to French") and assign global GNOME hotkeys to them.
+- **Auto-Start Local Servers:** Optionally configure the extension to automatically start your LM Studio server in the background if a local AI request fails.
+- **Dynamic Model Selection:** Easily fetch available models from your Local AI instance, or choose from up-to-date presets for Gemini, Claude, and Copilot. Supports `Default (Auto)` to defer to your CLI's native configuration.
+- **Customizable Actions:** Create unlimited custom prompts (e.g., "Summarize", "Refactor Code", "Translate to French") and assign global GNOME hotkeys to them.
 - **Per-Action Overrides:** Want your grammar check to use a fast local model, but your complex coding questions to use Claude 3.5 Sonnet? You can override the global backend on a per-action basis.
 - **Auto-Paste:** Optionally simulate `Ctrl+V` to automatically paste the AI's response back into your active window.
 - **Transformation History:** Keeps a rolling history of your recent transformations accessible from the tray menu, allowing you to instantly re-copy past results.
@@ -27,6 +28,7 @@ Depending on which backend you want to use, you will need the corresponding tool
 - **Local API:** [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) running locally (or any reachable OpenAI-compatible endpoint).
 - **Gemini CLI:** Install via npm: `npm install -g @google/gemini-cli` and run `gemini` once to authenticate.
 - **Claude CLI:** Install via npm: `npm install -g @anthropic-ai/claude-code` and run `claude` once to authenticate.
+- **Copilot CLI:** Install the GitHub Copilot CLI and run `copilot login` to authenticate.
 
 ### Manual Installation (From Source)
 

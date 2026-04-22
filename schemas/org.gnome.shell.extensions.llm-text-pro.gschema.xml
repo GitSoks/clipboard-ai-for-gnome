@@ -7,7 +7,7 @@
     <key name="backend" type="s">
       <default>'local'</default>
       <summary>Active AI backend</summary>
-      <description>Which backend to use: 'local', 'gemini-cli', or 'claude-cli'.</description>
+      <description>Which backend to use: 'local', 'gemini-cli', 'claude-cli', or 'copilot-cli'.</description>
     </key>
 
     <!-- ── Local API ─────────────────────────────────────────────── -->
@@ -48,6 +48,17 @@
       <summary>Path or command name for the Claude CLI binary</summary>
     </key>
 
+    <!-- ── Copilot CLI ─────────────────────────────────────────────── -->
+    <key name="copilot-model" type="s">
+      <default>'Default (Auto)'</default>
+      <summary>Copilot model for CLI calls</summary>
+    </key>
+
+    <key name="copilot-cli-path" type="s">
+      <default>'copilot'</default>
+      <summary>Path or command name for the Copilot CLI binary</summary>
+    </key>
+
     <!-- ── Behaviour ──────────────────────────────────────────────── -->
     <key name="auto-paste" type="b">
       <default>false</default>
@@ -65,6 +76,12 @@
       <description>If enabled, ping the API every 5 minutes to update the quota percentage in the tray menu.</description>
     </key>
 
+    <key name="auto-start-lms" type="b">
+      <default>false</default>
+      <summary>Automatically start LM Studio</summary>
+      <description>If enabled, automatically attempt to start the LM Studio server if a local AI connection fails.</description>
+    </key>
+
     <key name="history-size" type="i">
       <default>10</default>
       <summary>Number of past transformations to keep in history</summary>
@@ -72,7 +89,7 @@
 
     <!-- ── Actions ────────────────────────────────────────────────── -->
     <key name="actions-json" type="s">
-      <default>'[{"id":"fix-grammar","name":"Fix Grammar","prompt":"You are a grammar correction tool. Correct the following text. Return *only* the corrected text, with no explanation, preamble, or markdown formatting.","hotkey":"&lt;Control&gt;&lt;Super&gt;o","enabled":true,"backend":"default"},{"id":"improve-text","name":"Improve Text","prompt":"You are an editing assistant. Improve the following text for clarity, flow, and impact. Return *only* the improved text, with no explanation, preamble, or markdown formatting.","hotkey":"&lt;Control&gt;&lt;Super&gt;p","enabled":true,"backend":"default"},{"id":"explain-code","name":"Explain Code","prompt":"You are a senior developer. Explain the following code concisely. Output markdown format.","hotkey":"&lt;Control&gt;&lt;Super&gt;e","enabled":true,"backend":"default"},{"id":"refactor-code","name":"Refactor Code","prompt":"You are an expert software engineer. Refactor the following code to be cleaner and more efficient. Output ONLY the code, without markdown blocks or explanation.","hotkey":"&lt;Control&gt;&lt;Super&gt;r","enabled":true,"backend":"default"},{"id":"translate","name":"Translate DE ↔ EN","prompt":"Detect the language of the following text. If it is German, translate it to English. If it is English, translate it to German. Return *only* the translated text, with no explanation, preamble, or markdown formatting.","hotkey":"&lt;Control&gt;&lt;Super&gt;t","enabled":true,"backend":"default"}]'</default>
+      <default>'[{"id":"fix-grammar","name":"Fix Grammar","prompt":"You are a grammar correction tool. Correct the following text. Return *only* the corrected text, with no explanation, preamble, or markdown formatting.","hotkey":"&lt;Control&gt;&lt;Super&gt;o","enabled":true,"backend":"default"},{"id":"improve-text","name":"Improve Text","prompt":"You are an editing assistant. Improve the following text for clarity, flow, and impact. Return *only* the improved text, with no explanation, preamble, or markdown formatting.","hotkey":"&lt;Control&gt;&lt;Super&gt;p","enabled":true,"backend":"default"},{"id":"explain-code","name":"Explain Code","prompt":"You are a senior developer. Explain the following code concisely. Output markdown format.","hotkey":"&lt;Control&gt;&lt;Super&gt;e","enabled":true,"backend":"default"},{"id":"refactor-code","name":"Refactor Code","prompt":"You are an expert software engineer. Refactor the following code to be cleaner and more efficient. Output ONLY the code, without markdown blocks or explanation.","hotkey":"&lt;Control&gt;&lt;Super&gt;r","enabled":true,"backend":"default"},{"id":"translate","name":"Translate DE ↔ EN","prompt":"Detect the language of the following text. If it is German, translate it to English. If it is English, translate it to German. Return *only* the translated text, with no explanation, preamble, or markdown formatting.","hotkey":"&lt;Control&gt;&lt;Super&gt;t","enabled":true,"backend":"default"},{"id":"summarize","name":"Summarize","prompt":"Summarize the following text concisely. Return *only* the summary, with no explanation, preamble, or markdown formatting.","hotkey":"","enabled":true,"backend":"default"},{"id":"make-professional","name":"Make Professional","prompt":"Rewrite the following text in a highly professional, business-appropriate tone. Return *only* the rewritten text, with no explanation, preamble, or markdown formatting.","hotkey":"","enabled":true,"backend":"default"},{"id":"expand-text","name":"Expand / Elaborate","prompt":"Expand on the following text. Add more detail and context while maintaining the original meaning. Return *only* the expanded text, with no explanation, preamble, or markdown formatting.","hotkey":"","enabled":true,"backend":"default"}]'</default>
       <summary>JSON array of action objects</summary>
       <description>Each action: {id, name, prompt, hotkey, enabled, backend}</description>
     </key>

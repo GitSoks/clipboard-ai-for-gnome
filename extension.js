@@ -48,13 +48,6 @@ class TextProIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
         });
         box.add_child(this._iconLabel);
-
-        this._topLabel = new St.Label({
-            text: '',
-            y_align: Clutter.ActorAlign.CENTER,
-            style_class: 'llm-top-label',
-        });
-        box.add_child(this._topLabel);
         
         this.add_child(box);
 
@@ -175,6 +168,9 @@ class TextProIndicator extends PanelMenu.Button {
         } else if (backend === 'claude-cli') {
             const model = this._ext._settings.get_string('claude-model');
             info = `Status: Claude (${model})`;
+        } else if (backend === 'copilot-cli') {
+            const model = this._ext._settings.get_string('copilot-model');
+            info = `Status: Copilot (${model})`;
         }
         
         if (this._iconLabel.text === ICON_IDLE) {
@@ -189,7 +185,8 @@ class TextProIndicator extends PanelMenu.Button {
         const backends = [
             { id: 'local', name: 'Local' },
             { id: 'gemini-cli', name: 'Gemini' },
-            { id: 'claude-cli', name: 'Claude' }
+            { id: 'claude-cli', name: 'Claude' },
+            { id: 'copilot-cli', name: 'Copilot' }
         ];
         
         backends.forEach(b => {
@@ -251,7 +248,6 @@ class TextProIndicator extends PanelMenu.Button {
                 
                 if (models.length === 0) {
                     this._quotaItem.label.text = 'Local AI: Online (No model loaded)';
-                    this._topLabel.text = ' (Idle)';
                 } else {
                     const activeModel = models[0].id.split('/').pop();
                     let infoStr = `Local AI: Online (${activeModel})`;
@@ -263,7 +259,6 @@ class TextProIndicator extends PanelMenu.Button {
                     }
                     
                     this._quotaItem.label.text = infoStr;
-                    this._topLabel.text = `  [${activeModel}]`;
                     
                     if (this._iconLabel.text === ICON_IDLE) {
                         this._statusItem.label.text = `Status: Local (${activeModel})`;
@@ -272,14 +267,11 @@ class TextProIndicator extends PanelMenu.Button {
                 if (!silent) this.setDone('Local API OK');
             } catch (e) {
                 this._quotaItem.label.text = 'Local AI: Offline / Unreachable';
-                this._topLabel.text = ' (Offline)';
                 if (!silent) this.setError('Local API Offline');
             }
             return;
         }
 
-        // Hide top label for cloud APIs
-        this._topLabel.text = '';
         this._quotaItem.label.text = 'Quota: Checking...';
         try {
             // Send a tiny prompt to verify quota
@@ -679,6 +671,8 @@ export default class LLMTextProExtension extends Extension {
                 return this._callCLI('gemini', prompt, text);
             case 'claude-cli':
                 return this._callCLI('claude', prompt, text);
+            case 'copilot-cli':
+                return this._callCLI('copilot', prompt, text);
             case 'local':
             default:
                 return this._callLocalAPI(prompt, text);
@@ -687,7 +681,7 @@ export default class LLMTextProExtension extends Extension {
 
     // ── Local OpenAI-compatible API ───────────────────────────────────────────
 
-    async _callLocalAPI(prompt, text) {
+    async _callLocalAPI(prompt, text, isRetry = false) {
         if (!this._httpSession) throw new Error('HTTP session not initialised.');
 
         const endpoint  = this._settings.get_string('api-endpoint');
@@ -710,16 +704,26 @@ export default class LLMTextProExtension extends Extension {
             new TextEncoder().encode(payload)
         );
 
-        const bytes = await this._httpSession.send_and_read_async(
-            message,
-            GLib.PRIORITY_DEFAULT,
-            null
-        );
+        let bytes;
+        try {
+            bytes = await new Promise((resolve, reject) => {
+                this._httpSession.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (s, res) => {
+                    try { resolve(s.send_and_read_finish(res)); }
+                    catch (e) { reject(e); }
+                });
+            });
+        } catch (e) {
+            if (!isRetry && this._settings.get_boolean('auto-start-lms')) {
+                return await this._autoStartLMSAndRetry(prompt, text);
+            }
+            throw e;
+        }
 
         if (message.get_status() !== 200) {
-            throw new Error(
-                `API error ${message.get_status()}: ${message.get_reason_phrase()}`
-            );
+            if (message.get_status() === 0 && !isRetry && this._settings.get_boolean('auto-start-lms')) {
+                return await this._autoStartLMSAndRetry(prompt, text);
+            }
+            throw new Error(`API error ${message.get_status()}: ${message.get_reason_phrase()}`);
         }
 
         const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
@@ -734,6 +738,23 @@ export default class LLMTextProExtension extends Extension {
         return { text: content.trim(), info };
     }
 
+    async _autoStartLMSAndRetry(prompt, text) {
+        Main.notify('LLM Text Pro', 'Starting LM Studio server...');
+        try {
+            const proc = new Gio.Subprocess({
+                argv: ['lms', 'server', 'start'],
+                flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            });
+            proc.init(null);
+        } catch (e) {
+            console.warn('[LLM Text Pro] Failed to start LMS:', e.message);
+        }
+        await new Promise((r) => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 4000, () => { r(); return GLib.SOURCE_REMOVE; });
+        });
+        return this._callLocalAPI(prompt, text, true);
+    }
+
     // ── CLI backends (Gemini / Claude) ───────────────────────────────────────
 
     async _callCLI(cliType, prompt, text) {
@@ -743,16 +764,22 @@ export default class LLMTextProExtension extends Extension {
         if (cliType === 'gemini') {
             cliPath = this._settings.get_string('gemini-cli-path');
             const model = this._settings.get_string('gemini-model');
-            // Use -p for non-interactive (headless) mode in Gemini CLI
             args = [cliPath, '-p', fullInput];
             if (model && model.trim() !== '' && model.toLowerCase() !== 'default (auto)') {
                 args.push('--model', model);
             }
             args.push('--output-format', 'json');
-        } else {
-            // Claude Code CLI: claude -p "prompt" [--model model]
+        } else if (cliType === 'claude') {
             cliPath = this._settings.get_string('claude-cli-path');
             const model = this._settings.get_string('claude-model');
+            args = [cliPath, '-p', fullInput];
+            if (model && model.trim() !== '' && model.toLowerCase() !== 'default (auto)') {
+                args.push('--model', model);
+            }
+            args.push('--output-format', 'json');
+        } else if (cliType === 'copilot') {
+            cliPath = this._settings.get_string('copilot-cli-path');
+            const model = this._settings.get_string('copilot-model');
             args = [cliPath, '-p', fullInput];
             if (model && model.trim() !== '' && model.toLowerCase() !== 'default (auto)') {
                 args.push('--model', model);
@@ -777,16 +804,30 @@ export default class LLMTextProExtension extends Extension {
                     const err = stderr?.trim();
                     
                     let parsedJson = null;
-                    if (out && out.startsWith('{')) {
+                    let isJsonl = false;
+                    
+                    if (out) {
                         try {
                             parsedJson = JSON.parse(out);
-                        } catch (e) {}
+                        } catch (e) {
+                            if (out.includes('{"type":"assistant.message"') || out.includes('{"type":"result"')) {
+                                isJsonl = true;
+                            }
+                        }
                     }
                     
                     if (exit !== 0) {
                         let errMsg = `${cliType} CLI exited with ${exit}`;
                         if (parsedJson && parsedJson.is_error && parsedJson.result) {
                             errMsg = parsedJson.result;
+                        } else if (isJsonl && out.includes('"is_error":true')) {
+                            const lines = out.split('\n');
+                            for (const line of lines) {
+                                try {
+                                    const j = JSON.parse(line);
+                                    if (j.type === 'result' && j.is_error) errMsg = j.result;
+                                } catch(e){}
+                            }
                         } else if (err) {
                             errMsg = err;
                         } else if (out) {
@@ -801,7 +842,25 @@ export default class LLMTextProExtension extends Extension {
                                 reject(new Error(`${cliType} CLI returned empty output.`));
                             }
                         } else {
-                            if (parsedJson) {
+                            if (cliType === 'copilot' && isJsonl) {
+                                let text = '';
+                                let tokens = 0;
+                                let modelName = 'Copilot Default';
+                                const lines = out.split('\n');
+                                for (const line of lines) {
+                                    try {
+                                        const j = JSON.parse(line);
+                                        if (j.type === 'assistant.message' && j.data && j.data.content) {
+                                            text = j.data.content;
+                                            if (j.data.outputTokens) tokens = j.data.outputTokens;
+                                        }
+                                        if (j.type === 'session.tools_updated' && j.data && j.data.model) {
+                                            modelName = j.data.model;
+                                        }
+                                    } catch(e){}
+                                }
+                                resolve({ text: text.trim(), info: `Model: ${modelName}` + (tokens > 0 ? `\nTokens: ${tokens}` : '') });
+                            } else if (parsedJson && !isJsonl) {
                                 let text = '';
                                 let info = '';
                                 if (cliType === 'gemini') {
