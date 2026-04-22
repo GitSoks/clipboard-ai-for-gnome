@@ -21,7 +21,7 @@ import Clutter from 'gi://Clutter';
 // Animated Tray Indicator
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SPINNER_FRAMES = ['◐', '◓', '◑', '◒'];
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const ICON_IDLE      = '✨';
 const ICON_DONE      = '✓';
 const ICON_ERROR     = '✗';
@@ -93,7 +93,7 @@ class TextProIndicator extends PanelMenu.Button {
 
     _buildMenu() {
         // Top status row (non-interactive)
-        this._statusItem = new PopupMenu.PopupMenuItem('Ready', { reactive: false });
+        this._statusItem = new PopupMenu.PopupImageMenuItem('Ready', 'dialog-information-symbolic', { reactive: false });
         this._statusItem.label.style_class = 'llm-status-label';
         this.menu.addMenuItem(this._statusItem);
 
@@ -107,6 +107,7 @@ class TextProIndicator extends PanelMenu.Button {
         const backendLabel = new St.Label({
             text: 'AI Backend:',
             y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'llm-backend-title',
             x_expand: true,
         });
         backendContainerOuter.add_child(backendLabel);
@@ -121,7 +122,7 @@ class TextProIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(this._backendBoxItem);
 
         // Quota Status Item
-        this._quotaItem = new PopupMenu.PopupMenuItem('Quota: Unknown (Click to check)', { reactive: true });
+        this._quotaItem = new PopupMenu.PopupImageMenuItem('Quota: Unknown (Click to check)', 'network-server-symbolic');
         this._quotaItem.connect('activate', () => {
             this._checkQuota(false);
         });
@@ -136,13 +137,14 @@ class TextProIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // History sub-menu
-        this._historyMenu = new PopupMenu.PopupSubMenuMenuItem('History');
+        this._historyMenu = new PopupMenu.PopupSubMenuMenuItem('Transformation History');
+        this._historyMenu.icon.icon_name = 'document-open-recent-symbolic';
         this.menu.addMenuItem(this._historyMenu);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Settings item
-        const settingsItem = new PopupMenu.PopupMenuItem('⚙  Settings');
+        const settingsItem = new PopupMenu.PopupImageMenuItem('Extension Settings', 'preferences-system-symbolic');
         settingsItem.connect('activate', () => this._ext.openPreferences());
         this.menu.addMenuItem(settingsItem);
 
@@ -315,10 +317,7 @@ class TextProIndicator extends PanelMenu.Button {
         }
 
         enabled.forEach(action => {
-            const label = action.hotkey
-                ? `${action.name}  <small><i>${action.hotkey}</i></small>`
-                : action.name;
-            const item = new PopupMenu.PopupMenuItem(action.name);
+            const item = new PopupMenu.PopupImageMenuItem(action.name, 'system-run-symbolic');
             if (action.hotkey) {
                 item.add_child(new St.Label({
                     text: action.hotkey,
@@ -349,7 +348,7 @@ class TextProIndicator extends PanelMenu.Button {
         // Most-recent first
         [...history].reverse().forEach((entry, i) => {
             const snippet = entry.result.replace(/\n/g, ' ').substring(0, 60);
-            const item = new PopupMenu.PopupMenuItem(`${entry.actionName}: ${snippet}…`);
+            const item = new PopupMenu.PopupImageMenuItem(`${entry.actionName}: ${snippet}…`, 'edit-copy-symbolic');
             item.connect('activate', () => {
                 const clipboard = St.Clipboard.get_default();
                 clipboard.set_text(St.ClipboardType.CLIPBOARD, entry.result);
@@ -366,7 +365,7 @@ class TextProIndicator extends PanelMenu.Button {
 
         if (history.length > 0) {
             this._historyMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            const clearItem = new PopupMenu.PopupMenuItem('Clear History');
+            const clearItem = new PopupMenu.PopupImageMenuItem('Clear History', 'user-trash-symbolic');
             clearItem.connect('activate', () => {
                 this._ext._history = [];
                 this._rebuildHistory();
