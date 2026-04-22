@@ -575,7 +575,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         const infoRow = new Adw.ActionRow({
             title: 'LLM Text Pro',
-            subtitle: 'v8 — Built by David Sokolowski\nBased on "LLM Text Modifier" by Rishabh Bajpai',
+            subtitle: 'v10 — Built by David Sokolowski\nBased on "LLM Text Modifier" by Rishabh Bajpai',
             selectable: false,
         });
         group.add(infoRow);
