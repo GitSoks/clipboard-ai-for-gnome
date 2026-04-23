@@ -18,6 +18,24 @@ import Soup from 'gi://Soup';
 import Clutter from 'gi://Clutter';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _timeAgo(ts) {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60)   return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+}
+
+function cliIsInstalled(cliPath) {
+    if (!cliPath || cliPath.trim() === '') return false;
+    if (cliPath.startsWith('/')) return GLib.file_test(cliPath, GLib.FileTest.IS_EXECUTABLE);
+    return GLib.find_program_in_path(cliPath) !== null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Animated Tray Indicator
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -175,16 +193,27 @@ class TextProIndicator extends PanelMenu.Button {
 
     _rebuildBackendMenu() {
         this._backendSwitchBox.destroy_all_children();
-        const current = this._ext._settings.get_string('backend');
+        const s = this._ext._settings;
+        let current = s.get_string('backend');
 
         const backends = [
-            { id: 'local',       name: 'Local'   },
-            { id: 'gemini-cli',  name: 'Gemini'  },
-            { id: 'claude-cli',  name: 'Claude'  },
-            { id: 'copilot-cli', name: 'Copilot' },
+            { id: 'local',       name: 'Local',   cliPath: null },
+            { id: 'gemini-cli',  name: 'Gemini',  cliPath: s.get_string('gemini-cli-path') },
+            { id: 'claude-cli',  name: 'Claude',  cliPath: s.get_string('claude-cli-path') },
+            { id: 'copilot-cli', name: 'Copilot', cliPath: s.get_string('copilot-cli-path') },
         ];
 
+        // Auto-switch to local if the current CLI backend is not installed
+        const cur = backends.find(b => b.id === current);
+        if (cur && cur.cliPath !== null && !cliIsInstalled(cur.cliPath)) {
+            s.set_string('backend', 'local');
+            current = 'local';
+        }
+
         backends.forEach(b => {
+            // Skip CLI backends that are not installed
+            if (b.cliPath !== null && !cliIsInstalled(b.cliPath)) return;
+
             const btn = new St.Button({
                 label: b.name,
                 style_class: b.id === current
@@ -377,8 +406,58 @@ class TextProIndicator extends PanelMenu.Button {
         }
 
         [...history].reverse().forEach(entry => {
-            const snippet = entry.result.replace(/\n/g, ' ').substring(0, 60);
-            const item = new PopupMenu.PopupImageMenuItem(`${entry.actionName}: ${snippet}…`, 'edit-copy-symbolic');
+            const item = new PopupMenu.PopupBaseMenuItem();
+
+            const hbox = new St.BoxLayout({ vertical: false, x_expand: true, style: 'spacing: 8px;' });
+
+            // Copy icon
+            hbox.add_child(new St.Icon({
+                icon_name: 'edit-copy-symbolic',
+                icon_size: 14,
+                y_align: Clutter.ActorAlign.START,
+                style: 'margin-top: 1px;',
+            }));
+
+            // Content column
+            const vbox = new St.BoxLayout({ vertical: true, x_expand: true });
+
+            // Top row: action name + time ago
+            const topRow = new St.BoxLayout({ vertical: false, x_expand: true });
+            topRow.add_child(new St.Label({
+                text: entry.actionName,
+                style_class: 'llm-hist-action',
+                x_expand: true,
+            }));
+            topRow.add_child(new St.Label({
+                text: _timeAgo(entry.timestamp),
+                style_class: 'llm-hist-time',
+            }));
+            vbox.add_child(topRow);
+
+            // Result preview
+            const preview = (entry.result || '')
+                .replace(/\n+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            vbox.add_child(new St.Label({
+                text: preview.length > 70 ? preview.substring(0, 68) + '…' : preview,
+                style_class: 'llm-hist-preview',
+            }));
+
+            // Model / backend line
+            const model = (entry.modelInfo || '').split('\n')[0].replace('Model: ', '');
+            const backendLabel = entry.backend ? entry.backend.replace('-cli', '') : '';
+            const metaText = [backendLabel, model].filter(Boolean).join(' · ');
+            if (metaText) {
+                vbox.add_child(new St.Label({
+                    text: metaText,
+                    style_class: 'llm-hist-meta',
+                }));
+            }
+
+            hbox.add_child(vbox);
+            item.add_child(hbox);
+
             item.connect('activate', () => {
                 const clipboard = St.Clipboard.get_default();
                 clipboard.set_text(St.ClipboardType.CLIPBOARD, entry.result);
@@ -393,15 +472,14 @@ class TextProIndicator extends PanelMenu.Button {
             this._historyMenu.menu.addMenuItem(item);
         });
 
-        if (history.length > 0) {
-            this._historyMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            const clearItem = new PopupMenu.PopupImageMenuItem('Clear History', 'user-trash-symbolic');
-            clearItem.connect('activate', () => {
-                this._ext._history = [];
-                this._rebuildHistory();
-            });
-            this._historyMenu.menu.addMenuItem(clearItem);
-        }
+        this._historyMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const clearItem = new PopupMenu.PopupImageMenuItem('Clear History', 'user-trash-symbolic');
+        clearItem.connect('activate', () => {
+            this._ext._history = [];
+            this._ext._saveHistory();
+            this._rebuildHistory();
+        });
+        this._historyMenu.menu.addMenuItem(clearItem);
     }
 
     // ── State setters ────────────────────────────────────────────────────────
@@ -515,10 +593,37 @@ export default class LLMTextProExtension extends Extension {
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
+    _historyFilePath() {
+        return GLib.build_filenamev([
+            GLib.get_user_data_dir(),
+            'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'history.json',
+        ]);
+    }
+
+    _loadHistory() {
+        try {
+            const [ok, bytes] = GLib.file_get_contents(this._historyFilePath());
+            if (!ok) return [];
+            return JSON.parse(new TextDecoder().decode(bytes));
+        } catch (_) {
+            return [];
+        }
+    }
+
+    _saveHistory() {
+        try {
+            const path = this._historyFilePath();
+            GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+            GLib.file_set_contents(path, JSON.stringify(this._history));
+        } catch (e) {
+            console.warn('[LLM Text Pro] Could not save history:', e.message);
+        }
+    }
+
     enable() {
         this._settings    = this.getSettings();
         this._httpSession = new Soup.Session();
-        this._history     = [];
+        this._history     = this._loadHistory();
 
         this._indicator = new TextProIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
@@ -674,13 +779,16 @@ export default class LLMTextProExtension extends Extension {
             const histSize = this._settings.get_int('history-size');
             this._history.push({
                 actionName: action.name,
-                input: inputText.substring(0, 200),
-                result: resultText,
-                timestamp: Date.now(),
+                input:      inputText.substring(0, 200),
+                result:     resultText,
+                timestamp:  Date.now(),
+                backend,
+                modelInfo:  (result && result.info) ? result.info : '',
             });
             while (this._history.length > histSize) {
                 this._history.shift();
             }
+            this._saveHistory();
 
             this._indicator?.setDone(action.name);
 

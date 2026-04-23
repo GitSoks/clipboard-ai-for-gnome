@@ -86,6 +86,12 @@ const DEFAULT_ACTIONS = [
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+function isCliInstalled(cliPath) {
+    if (!cliPath || cliPath.trim() === '') return false;
+    if (cliPath.startsWith('/')) return GLib.file_test(cliPath, GLib.FileTest.IS_EXECUTABLE);
+    return GLib.find_program_in_path(cliPath) !== null;
+}
+
 function makeEntry(text, settings, key) {
     const row = new Adw.EntryRow({ title: text, text: settings.get_string(key) });
     row.connect('notify::text', () => settings.set_string(key, row.get_text()));
@@ -174,17 +180,13 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         localGroup.add(makePasswordEntry('API Key', settings, 'api-key'));
 
         // ── Gemini CLI ──
-        const geminiGroup = new Adw.PreferencesGroup({
+        this._makeCliGroup(page, settings, {
             title: 'Gemini CLI',
             description: 'Requires the Google Gemini CLI installed and authenticated.',
-        });
-        page.add(geminiGroup);
-        geminiGroup.add(makeEntry('CLI Binary Path', settings, 'gemini-cli-path'));
-        geminiGroup.add(this._makeModelEntryWithPresets(
-            'Gemini Model',
-            settings,
-            'gemini-model',
-            [
+            pathKey: 'gemini-cli-path',
+            modelTitle: 'Gemini Model',
+            modelKey: 'gemini-model',
+            presets: [
                 'Default (Auto)',
                 'gemini-3.1-pro-preview',
                 'gemini-3.0-flash-preview',
@@ -195,22 +197,19 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 'gemini-2.0-flash-lite',
                 'gemini-1.5-pro',
                 'gemini-1.5-flash',
-                'gemini-1.5-flash-8b'
-            ]
-        ));
+                'gemini-1.5-flash-8b',
+            ],
+            downloadUrl: 'https://github.com/google-gemini/gemini-cli',
+        });
 
         // ── Claude CLI ──
-        const claudeGroup = new Adw.PreferencesGroup({
+        this._makeCliGroup(page, settings, {
             title: 'Claude CLI',
             description: 'Requires Claude Code CLI ("claude") installed and authenticated.',
-        });
-        page.add(claudeGroup);
-        claudeGroup.add(makeEntry('CLI Binary Path', settings, 'claude-cli-path'));
-        claudeGroup.add(this._makeModelEntryWithPresets(
-            'Claude Model',
-            settings,
-            'claude-model',
-            [
+            pathKey: 'claude-cli-path',
+            modelTitle: 'Claude Model',
+            modelKey: 'claude-model',
+            presets: [
                 'Default (Auto)',
                 'claude-3-7-sonnet-20250219',
                 'claude-3-5-sonnet-20241022',
@@ -218,31 +217,81 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 'claude-3-opus-20240229',
                 'claude-sonnet-4-6',
                 'claude-opus-4-6',
-                'claude-haiku-4-5-20251001'
-            ]
-        ));
+                'claude-haiku-4-5-20251001',
+            ],
+            downloadUrl: 'https://claude.ai/code',
+        });
 
         // ── Copilot CLI ──
-        const copilotGroup = new Adw.PreferencesGroup({
+        this._makeCliGroup(page, settings, {
             title: 'Copilot CLI',
             description: 'Requires GitHub Copilot CLI ("copilot") installed and authenticated.',
-        });
-        page.add(copilotGroup);
-        copilotGroup.add(makeEntry('CLI Binary Path', settings, 'copilot-cli-path'));
-        copilotGroup.add(this._makeModelEntryWithPresets(
-            'Copilot Model',
-            settings,
-            'copilot-model',
-            [
+            pathKey: 'copilot-cli-path',
+            modelTitle: 'Copilot Model',
+            modelKey: 'copilot-model',
+            presets: [
                 'Default (Auto)',
                 'gpt-4o',
                 'claude-3.5-sonnet',
                 'gpt-4',
-                'gpt-3.5-turbo'
-            ]
-        ));
+                'gpt-3.5-turbo',
+            ],
+            downloadUrl: 'https://github.com/github/copilot-cli',
+        });
 
         return page;
+    }
+
+    _makeCliGroup(page, settings, { title, description, pathKey, modelTitle, modelKey, presets, downloadUrl }) {
+        const group = new Adw.PreferencesGroup({ title, description });
+        page.add(group);
+
+        // Status row
+        const statusIcon = new Gtk.Image({ pixel_size: 16, valign: Gtk.Align.CENTER });
+        const statusRow = new Adw.ActionRow({ activatable: false });
+        statusRow.add_prefix(statusIcon);
+
+        const downloadBtn = new Gtk.Button({
+            label: 'Download',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['suggested-action'],
+            tooltip_text: `Open download/install page for ${title}`,
+        });
+        downloadBtn.connect('clicked', () => {
+            try { Gtk.show_uri(null, downloadUrl, GLib.CURRENT_TIME); }
+            catch (e) { console.warn('[LLM Text Pro] Could not open URL:', e.message); }
+        });
+        statusRow.add_suffix(downloadBtn);
+        group.add(statusRow);
+
+        // Path entry — always editable so the user can fix a wrong path
+        const pathRow = makeEntry('CLI Binary Path', settings, pathKey);
+        group.add(pathRow);
+
+        // Model entry — grayed out when CLI is not found
+        const modelRow = this._makeModelEntryWithPresets(modelTitle, settings, modelKey, presets);
+        group.add(modelRow);
+
+        const refresh = () => {
+            const path = settings.get_string(pathKey);
+            const found = isCliInstalled(path);
+            const resolvedPath = found
+                ? (path.startsWith('/') ? path : (GLib.find_program_in_path(path) || path))
+                : null;
+
+            statusRow.set_title(found ? 'Installed' : 'Not Installed');
+            statusRow.set_subtitle(found
+                ? `Found: ${resolvedPath}`
+                : 'Binary not found on PATH — install and authenticate first');
+            statusIcon.set_from_icon_name(found ? 'emblem-ok-symbolic' : 'dialog-warning-symbolic');
+            downloadBtn.set_visible(!found);
+            modelRow.set_sensitive(found);
+        };
+
+        settings.connect(`changed::${pathKey}`, refresh);
+        refresh();
+
+        return group;
     }
 
     _makeLocalModelEntry(settings) {
@@ -381,25 +430,29 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             icon_name: 'document-edit-symbolic',
         });
 
-        // Store refs used by sub-methods
         this._actionsSettings = settings;
         this._actionsWindow   = window;
+        this._actionRowMap    = new Map(); // action.id → { widget, chipsBox }
 
-        // CSS for slide-in animation and disabled-row dimming
         const css = new Gtk.CssProvider();
         css.load_from_string(
-            '.llm-new-row{animation:llm-in 220ms ease-out both;}' +
-            '@keyframes llm-in{from{opacity:0;margin-top:-10px}to{opacity:1;margin-top:0}}' +
-            '.llm-row-disabled .title,.llm-row-disabled .subtitle{opacity:0.4;}'
+            '.llm-new-row{animation:llm-in 200ms ease-out both;}' +
+            '@keyframes llm-in{from{opacity:0;margin-top:-8px}to{opacity:1;margin-top:0}}' +
+            '.llm-row-disabled .title{opacity:0.45;}' +
+            '.llm-row-disabled .subtitle{opacity:0.3;}' +
+            '.llm-chip{font-size:0.72em;font-family:monospace;padding:1px 6px;border-radius:4px;' +
+            'background-color:alpha(currentColor,0.1);}'
         );
         Gtk.StyleContext.add_provider_for_display(
             window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         );
 
-        // ── Action list group ──
         this._actionsListGroup = new Adw.PreferencesGroup({ title: 'Text Actions' });
         page.add(this._actionsListGroup);
-        this._rebuildActionsUI();
+
+        const actions = this._parseActions(settings);
+        this._updateGroupHeader(actions);
+        actions.forEach(a => this._appendActionRowWidget(a, false));
 
         // ── Buttons ──
         const btnGroup = new Adw.PreferencesGroup();
@@ -423,7 +476,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             dlg.connect('response', (_d, resp) => {
                 if (resp === 'reset') {
                     settings.set_string('actions-json', JSON.stringify(DEFAULT_ACTIONS));
-                    this._rebuildActionsUI();
+                    this._fullRebuildActionsUI();
                 }
             });
             dlg.present(window);
@@ -433,37 +486,41 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         return page;
     }
 
-    _rebuildActionsUI(animateLastRow = false) {
-        const settings = this._actionsSettings;
-        const group    = this._actionsListGroup;
-        const actions  = this._parseActions(settings);
-        const n = actions.length;
-
-        group.set_description(
-            `${n} action${n !== 1 ? 's' : ''} — click any row to edit`
+    _updateGroupHeader(actions) {
+        const total   = actions.length;
+        const enabled = actions.filter(a => a.enabled).length;
+        this._actionsListGroup.set_description(
+            `${enabled} of ${total} enabled — click any row to edit`
         );
+    }
 
-        // Remove only rows we added (tagged with _llmRow)
-        const lb = this._getGroupListBox(group);
-        if (lb) {
-            let row = lb.get_first_child();
-            while (row) {
-                const next = row.get_next_sibling();
-                if (row._llmRow) lb.remove(row);
-                row = next;
-            }
-        }
+    _appendActionRowWidget(action, animate = false) {
+        const widget = this._makeActionRow(action);
+        if (animate) widget.add_css_class('llm-new-row');
+        this._actionsListGroup.add(widget);
+        this._actionRowMap.set(action.id, { widget, chipsBox: widget._chipsBox });
+    }
 
-        actions.forEach((action, index) => {
-            const row = this._makeActionRow(action, index);
-            row._llmRow = true;
-            if (animateLastRow && index === n - 1) row.add_css_class('llm-new-row');
-            group.add(row);
+    _fullRebuildActionsUI() {
+        this._actionRowMap.forEach(ref => {
+            try { this._actionsListGroup.remove(ref.widget); } catch (_) {}
         });
+        this._actionRowMap.clear();
+        const actions = this._parseActions(this._actionsSettings);
+        this._updateGroupHeader(actions);
+        actions.forEach(a => this._appendActionRowWidget(a, false));
+    }
+
+    _makeRowSubtitle(action) {
+        const preview = (action.prompt || '')
+            .replace(/\n+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!preview) return 'No prompt set';
+        return preview.length > 90 ? preview.substring(0, 87) + '…' : preview;
     }
 
     _getGroupListBox(group) {
-        // Walk up to 3 levels deep to find Adw.PreferencesGroup's internal GtkListBox
         const search = (widget, depth) => {
             if (!widget || depth > 3) return null;
             if (widget instanceof Gtk.ListBox) return widget;
@@ -507,20 +564,33 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         return 'document-edit-symbolic';
     }
 
-    _makeActionRow(action, index) {
-        const settings = this._actionsSettings;
+    _rebuildChips(box, action) {
+        let c = box.get_first_child();
+        while (c) { const n = c.get_next_sibling(); box.remove(c); c = n; }
+        if (action.hotkey) {
+            box.append(new Gtk.Label({
+                label: action.hotkey,
+                css_classes: ['llm-chip', 'dim-label'],
+                valign: Gtk.Align.CENTER,
+            }));
+        }
+        if (action.backend && action.backend !== 'default') {
+            box.append(new Gtk.Label({
+                label: action.backend.replace('-cli', ''),
+                css_classes: ['llm-chip'],
+                valign: Gtk.Align.CENTER,
+            }));
+        }
+    }
 
-        // Build subtitle: hotkey + optional backend override
-        const parts = [
-            action.hotkey || null,
-            (action.backend && action.backend !== 'default') ? action.backend : null,
-        ].filter(Boolean);
-        const subtitle = parts.length ? parts.join(' · ') : 'No hotkey';
-
-        const row = new Adw.ActionRow({ title: action.name, subtitle, activatable: true });
+    _makeActionRow(action) {
+        const row = new Adw.ActionRow({
+            title: action.name,
+            subtitle: this._makeRowSubtitle(action),
+            activatable: true,
+        });
         if (!action.enabled) row.add_css_class('llm-row-disabled');
 
-        // Leading icon
         row.add_prefix(new Gtk.Image({
             icon_name: this._getIconForAction(action),
             pixel_size: 16,
@@ -528,17 +598,28 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             valign: Gtk.Align.CENTER,
         }));
 
-        // Enable/disable toggle — clicks handled by switch, won't fire row activation
+        // Hotkey / backend chips
+        const chipsBox = new Gtk.Box({ valign: Gtk.Align.CENTER, spacing: 4 });
+        this._rebuildChips(chipsBox, action);
+        row.add_suffix(chipsBox);
+        row._chipsBox = chipsBox;
+
+        // Enable/disable toggle
         const toggle = new Gtk.Switch({ valign: Gtk.Align.CENTER, active: action.enabled });
         toggle.connect('notify::active', () => {
             action.enabled = toggle.get_active();
             if (action.enabled) row.remove_css_class('llm-row-disabled');
             else                row.add_css_class('llm-row-disabled');
-            this._saveAction(settings, action, index);
+            const acts = this._parseActions(this._actionsSettings);
+            const i = acts.findIndex(a => a.id === action.id);
+            if (i >= 0) {
+                acts[i].enabled = action.enabled;
+                this._actionsSettings.set_string('actions-json', JSON.stringify(acts));
+            }
+            this._updateGroupHeader(this._parseActions(this._actionsSettings));
         });
         row.add_suffix(toggle);
 
-        // Trailing chevron — indicates the row opens an editor
         row.add_suffix(new Gtk.Image({
             icon_name: 'go-next-symbolic',
             pixel_size: 16,
@@ -546,22 +627,32 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             valign: Gtk.Align.CENTER,
         }));
 
-        row.connect('activated', () => this._openActionDialog(index));
+        row.connect('activated', () => this._openActionDialog(action.id));
         return row;
     }
 
-    _openActionDialog(index) {
-        const settings = this._actionsSettings;
-        const isNew    = index === null || index === undefined;
-        const action   = isNew
-            ? { id: `custom-${Date.now()}`, name: '', prompt: 'Transform the following text. Return ONLY the result, with no explanation or preamble.', hotkey: '', enabled: true, backend: 'default' }
-            : { ...this._parseActions(settings)[index] };
+    _reorderRowWidget(actionId, fromIndex, toIndex) {
+        const ref = this._actionRowMap.get(actionId);
+        if (!ref) return;
+        const lb = this._getGroupListBox(this._actionsListGroup);
+        if (!lb) return;
+        lb.remove(ref.widget);
+        lb.insert(ref.widget, toIndex);
+    }
 
-        // ── Dialog shell ──
+    _openActionDialog(actionId) {
+        const settings    = this._actionsSettings;
+        const isNew       = actionId === null || actionId === undefined;
+        const acts        = this._parseActions(settings);
+        const actionIndex = isNew ? -1 : acts.findIndex(a => a.id === actionId);
+        const action      = isNew
+            ? { id: `custom-${Date.now()}`, name: '', prompt: 'Transform the following text. Return ONLY the result, with no explanation or preamble.', hotkey: '', enabled: true, backend: 'default' }
+            : { ...acts[actionIndex] };
+
         const dialog = new Adw.Dialog({
             title: isNew ? 'New Action' : 'Edit Action',
-            content_width: 520,
-            content_height: 640,
+            content_width: 540,
+            content_height: 680,
         });
 
         const toolbarView = new Adw.ToolbarView();
@@ -580,7 +671,6 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         });
         hbar.pack_end(saveBtn);
 
-        // ── Scrollable body ──
         const scroll = new Gtk.ScrolledWindow({
             vexpand: true,
             hscrollbar_policy: Gtk.PolicyType.NEVER,
@@ -630,11 +720,67 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         backendRow.set_selected(Math.max(0, bkKeys.indexOf(action.backend || 'default')));
         settingsGroup.add(backendRow);
 
+        // ── Reorder row (existing actions only) ──
+        if (!isNew && acts.length > 1) {
+            let curIndex = actionIndex;
+            const posRow = new Adw.ActionRow({
+                title: 'Position in Menu',
+                subtitle: `${curIndex + 1} of ${acts.length}`,
+                activatable: false,
+            });
+
+            const upBtn = new Gtk.Button({
+                icon_name: 'go-up-symbolic',
+                tooltip_text: 'Move earlier in menu',
+                valign: Gtk.Align.CENTER,
+                sensitive: curIndex > 0,
+                css_classes: ['flat'],
+            });
+            const downBtn = new Gtk.Button({
+                icon_name: 'go-down-symbolic',
+                tooltip_text: 'Move later in menu',
+                valign: Gtk.Align.CENTER,
+                sensitive: curIndex < acts.length - 1,
+                css_classes: ['flat'],
+            });
+
+            upBtn.connect('clicked', () => {
+                const cur = this._parseActions(settings);
+                const i = cur.findIndex(a => a.id === action.id);
+                if (i <= 0) return;
+                [cur[i], cur[i - 1]] = [cur[i - 1], cur[i]];
+                settings.set_string('actions-json', JSON.stringify(cur));
+                this._reorderRowWidget(action.id, i, i - 1);
+                curIndex = i - 1;
+                posRow.set_subtitle(`${curIndex + 1} of ${cur.length}`);
+                upBtn.set_sensitive(curIndex > 0);
+                downBtn.set_sensitive(true);
+            });
+
+            downBtn.connect('clicked', () => {
+                const cur = this._parseActions(settings);
+                const i = cur.findIndex(a => a.id === action.id);
+                if (i >= cur.length - 1) return;
+                [cur[i], cur[i + 1]] = [cur[i + 1], cur[i]];
+                settings.set_string('actions-json', JSON.stringify(cur));
+                this._reorderRowWidget(action.id, i, i + 1);
+                curIndex = i + 1;
+                posRow.set_subtitle(`${curIndex + 1} of ${cur.length}`);
+                upBtn.set_sensitive(true);
+                downBtn.set_sensitive(curIndex < cur.length - 1);
+            });
+
+            const moveBox = new Gtk.Box({ css_classes: ['linked'], valign: Gtk.Align.CENTER });
+            moveBox.append(upBtn);
+            moveBox.append(downBtn);
+            posRow.add_suffix(moveBox);
+            settingsGroup.add(posRow);
+        }
+
         // ── Prompt section ──
         const promptSection = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 8 });
         body.append(promptSection);
 
-        // Section header (mimics Adw.PreferencesGroup header style)
         const promptHeader = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 2, margin_start: 6 });
         promptHeader.append(new Gtk.Label({
             label: 'System Prompt',
@@ -642,14 +788,13 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             css_classes: ['title-4'],
         }));
         promptHeader.append(new Gtk.Label({
-            label: 'Instructions sent to the AI along with the clipboard text.',
+            label: 'Instructions sent to the AI together with the clipboard text.',
             halign: Gtk.Align.START,
             wrap: true,
             css_classes: ['dim-label', 'caption'],
         }));
         promptSection.append(promptHeader);
 
-        // Text area inside a card
         const buffer = new Gtk.TextBuffer();
         buffer.set_text(action.prompt || '', -1);
 
@@ -672,7 +817,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             child: textView,
             vexpand: true,
             hscrollbar_policy: Gtk.PolicyType.NEVER,
-            height_request: 210,
+            height_request: 230,
         }));
         promptSection.append(promptCard);
 
@@ -694,10 +839,17 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 confirm.connect('response', (_d, resp) => {
                     if (resp !== 'delete') return;
                     dialog.close();
-                    const acts = this._parseActions(settings);
-                    acts.splice(index, 1);
-                    settings.set_string('actions-json', JSON.stringify(acts));
-                    this._rebuildActionsUI();
+                    const cur = this._parseActions(settings);
+                    const i = cur.findIndex(a => a.id === action.id);
+                    if (i >= 0) cur.splice(i, 1);
+                    settings.set_string('actions-json', JSON.stringify(cur));
+                    // Remove the row surgically — no scroll reset
+                    const ref = this._actionRowMap.get(action.id);
+                    if (ref) {
+                        this._actionsListGroup.remove(ref.widget);
+                        this._actionRowMap.delete(action.id);
+                    }
+                    this._updateGroupHeader(cur);
                 });
                 confirm.present(dialog);
             });
@@ -720,10 +872,26 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             action.backend = bkKeys[backendRow.get_selected()];
             action.prompt  = buffer.get_text(s, e, false);
 
-            const acts = this._parseActions(settings);
-            if (isNew) acts.push(action); else acts[index] = action;
-            settings.set_string('actions-json', JSON.stringify(acts));
-            this._rebuildActionsUI(isNew);
+            const cur = this._parseActions(settings);
+            if (isNew) {
+                cur.push(action);
+                settings.set_string('actions-json', JSON.stringify(cur));
+                this._appendActionRowWidget(action, true); // animate new row
+            } else {
+                const i = cur.findIndex(a => a.id === action.id);
+                if (i >= 0) cur[i] = action;
+                settings.set_string('actions-json', JSON.stringify(cur));
+                // Update existing row in-place — no scroll reset
+                const ref = this._actionRowMap.get(action.id);
+                if (ref) {
+                    ref.widget.set_title(action.name);
+                    ref.widget.set_subtitle(this._makeRowSubtitle(action));
+                    if (action.enabled) ref.widget.remove_css_class('llm-row-disabled');
+                    else                ref.widget.add_css_class('llm-row-disabled');
+                    this._rebuildChips(ref.chipsBox, action);
+                }
+            }
+            this._updateGroupHeader(this._parseActions(settings));
             dialog.close();
         });
 
@@ -733,14 +901,6 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
     _parseActions(settings) {
         try { return JSON.parse(settings.get_string('actions-json')); }
         catch (_) { return []; }
-    }
-
-    _saveAction(settings, updatedAction, index) {
-        const acts = this._parseActions(settings);
-        if (index >= 0 && index < acts.length) {
-            acts[index] = updatedAction;
-            settings.set_string('actions-json', JSON.stringify(acts));
-        }
     }
 
     // ── Page: General ────────────────────────────────────────────────────────
