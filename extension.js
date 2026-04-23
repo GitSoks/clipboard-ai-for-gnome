@@ -29,6 +29,38 @@ function _timeAgo(ts) {
     return `${Math.floor(s / 86400)}d ago`;
 }
 
+function _formatTimestamp(ts) {
+    const d   = new Date(ts);
+    const now = new Date();
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return time;
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
+}
+
+function _wc(text) {
+    return (text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function _friendlyError(msg) {
+    if (!msg) return 'An unknown error occurred.';
+    const m = msg.toLowerCase();
+    if (m.includes('empty') && m.includes('clipboard'))
+        return 'Clipboard is empty — copy some text first.';
+    if (m.includes('empty result') || m.includes('empty response'))
+        return 'AI returned an empty response — try rephrasing your input.';
+    if (m.includes('429') || m.includes('quota') || m.includes('capacity'))
+        return 'API quota exceeded — try again later or switch to a different backend.';
+    if (m.includes('401') || m.includes('403') || m.includes('api key') || m.includes('unauthorized'))
+        return 'Authentication failed — check your API key in Settings.';
+    if (m.includes('timeout') || m.includes('unreachable') || m.includes('offline') || m.includes('econnrefused'))
+        return 'Backend is unreachable — is the service running?';
+    if (m.includes('not found') && m.includes('cli'))
+        return 'CLI binary not found — check the path in Settings → Backend.';
+    return msg.length > 140 ? msg.substring(0, 137) + '…' : msg;
+}
+
 function cliIsInstalled(cliPath) {
     if (!cliPath || cliPath.trim() === '') return false;
     if (cliPath.startsWith('/')) return GLib.file_test(cliPath, GLib.FileTest.IS_EXECUTABLE);
@@ -71,6 +103,7 @@ class TextProIndicator extends PanelMenu.Button {
         this._animTimer = null;
         this._resetTimer = null;
         this._quotaTimer = null;
+        this._lastResultFull = null;
 
         this._buildMenu();
 
@@ -86,6 +119,9 @@ class TextProIndicator extends PanelMenu.Button {
             GLib.source_remove(this._quotaTimer);
             this._quotaTimer = null;
         }
+
+        // Always show current stats from in-memory usage on init
+        this._updateQuotaDisplay();
 
         const enabled = this._ext._settings.get_boolean('auto-check-quota');
         if (enabled) {
@@ -103,6 +139,50 @@ class TextProIndicator extends PanelMenu.Button {
         this._statusItem = new PopupMenu.PopupImageMenuItem('Ready', 'dialog-information-symbolic', { reactive: false });
         this._statusItem.label.style_class = 'llm-status-label';
         this.menu.addMenuItem(this._statusItem);
+
+        // Result preview — shown after a successful action; hidden otherwise
+        this._resultPreviewItem = new PopupMenu.PopupBaseMenuItem({ reactive: true });
+        this._resultPreviewItem.visible = false;
+
+        const rbox = new St.BoxLayout({ vertical: true, x_expand: true, style_class: 'llm-result-box' });
+
+        const rHeader = new St.BoxLayout({ vertical: false, x_expand: true });
+        rHeader.add_child(new St.Icon({
+            icon_name: 'object-select-symbolic',
+            icon_size: 11,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'llm-result-icon',
+        }));
+        this._resultActionLabel = new St.Label({
+            text: '',
+            style_class: 'llm-result-action-label',
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        rHeader.add_child(this._resultActionLabel);
+        rHeader.add_child(new St.Label({
+            text: 'click to copy',
+            style_class: 'llm-result-copy-hint',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+        rbox.add_child(rHeader);
+
+        this._resultTextLabel = new St.Label({
+            text: '',
+            style_class: 'llm-result-text',
+            x_expand: true,
+        });
+        this._resultTextLabel.clutter_text.line_wrap = true;
+        rbox.add_child(this._resultTextLabel);
+
+        this._resultPreviewItem.add_child(rbox);
+        this._resultPreviewItem.connect('activate', () => {
+            if (!this._lastResultFull) return;
+            const clipboard = St.Clipboard.get_default();
+            clipboard.set_text(St.ClipboardType.CLIPBOARD, this._lastResultFull);
+            Main.notify('LLM Text Pro', 'Result copied to clipboard.');
+        });
+        this.menu.addMenuItem(this._resultPreviewItem);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -161,6 +241,7 @@ class TextProIndicator extends PanelMenu.Button {
                 this._rebuildActionItems();
                 this._rebuildHistory();
                 this._updateStatusInfo();
+                this._updateQuotaDisplay();
             }
         });
 
@@ -235,76 +316,115 @@ class TextProIndicator extends PanelMenu.Button {
     }
 
     async _checkQuota(silent = false) {
-        if (!silent) this.setProcessing('Checking API…');
-
         const backend = this._ext._settings.get_string('backend');
-        if (backend === 'local') {
-            this._quotaItem.label.text = 'Local AI: Checking…';
-            try {
-                let endpoint = this._ext._settings.get_string('api-endpoint');
-                let url = endpoint;
-                if (url.endsWith('/chat/completions')) {
-                    url = url.replace('/chat/completions', '/models');
-                } else if (!url.endsWith('/models')) {
-                    if (!url.endsWith('/')) url += '/';
-                    url += 'models';
-                }
 
-                const session = new Soup.Session();
-                const msg = Soup.Message.new('GET', url);
+        // CLI backends: show today's accumulated usage — no live call to avoid cost
+        if (backend !== 'local') {
+            this._updateQuotaDisplay();
+            if (!silent) this.setDone('Usage stats refreshed');
+            return;
+        }
 
-                const apiKey = this._ext._settings.get_string('api-key');
-                if (apiKey && apiKey !== 'random' && apiKey.trim() !== '') {
-                    msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
-                }
+        // Local backend: HTTP connectivity ping
+        if (!silent) this.setProcessing('Checking API…');
+        this._quotaItem.label.text = 'Local AI: Checking…';
+        try {
+            let endpoint = this._ext._settings.get_string('api-endpoint');
+            let url = endpoint;
+            if (url.endsWith('/chat/completions')) {
+                url = url.replace('/chat/completions', '/models');
+            } else if (!url.endsWith('/models')) {
+                if (!url.endsWith('/')) url += '/';
+                url += 'models';
+            }
 
-                const bytes = await new Promise((resolve, reject) => {
-                    session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (s, res) => {
-                        try { resolve(s.send_and_read_finish(res)); }
-                        catch (e) { reject(e); }
-                    });
+            const session = new Soup.Session();
+            const msg = Soup.Message.new('GET', url);
+
+            const apiKey = this._ext._settings.get_string('api-key');
+            if (apiKey && apiKey !== 'random' && apiKey.trim() !== '') {
+                msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
+            }
+
+            const bytes = await new Promise((resolve, reject) => {
+                session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (s, res) => {
+                    try { resolve(s.send_and_read_finish(res)); }
+                    catch (e) { reject(e); }
                 });
+            });
 
-                if (msg.get_status() !== 200) throw new Error(`HTTP ${msg.get_status()}`);
+            if (msg.get_status() !== 200) throw new Error(`HTTP ${msg.get_status()}`);
 
-                const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
-                const models = (json.data || []);
+            const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
+            const models = (json.data || []);
 
-                if (models.length === 0) {
-                    this._quotaItem.label.text = 'Local AI: Online (no model loaded)';
-                } else {
-                    const activeModel = models[0].id.split('/').pop();
-                    let infoStr = `Local AI: Online — ${activeModel}`;
-                    if (models[0].size) {
-                        const sizeGB = (models[0].size / 1e9).toFixed(1);
-                        infoStr += ` (${sizeGB} GB)`;
-                    }
-                    this._quotaItem.label.text = infoStr;
-                    if (!this._iconLabel.visible) {
-                        this._statusItem.label.text = `Local — ${activeModel}`;
-                    }
+            if (models.length === 0) {
+                this._quotaItem.label.text = 'Local AI: Online (no model loaded)';
+            } else {
+                const activeModel = models[0].id.split('/').pop();
+                let infoStr = `Local AI: Online — ${activeModel}`;
+                if (models[0].size) {
+                    const sizeGB = (models[0].size / 1e9).toFixed(1);
+                    infoStr += ` (${sizeGB} GB)`;
                 }
-                if (!silent) this.setDone('Local API OK');
-            } catch (e) {
-                this._quotaItem.label.text = 'Local AI: Offline / unreachable';
-                if (!silent) this.setError('Local API offline');
+                this._quotaItem.label.text = infoStr;
+                if (!this._iconLabel.visible) {
+                    this._statusItem.label.text = `Local — ${activeModel}`;
+                }
+            }
+            if (!silent) this.setDone('Local API OK');
+        } catch (e) {
+            this._quotaItem.label.text = 'Local AI: Offline / unreachable';
+            if (!silent) this.setError('Local API offline');
+        }
+    }
+
+    _updateQuotaDisplay() {
+        const backend = this._ext._settings.get_string('backend');
+        const usage   = this._ext._usage;
+
+        if (backend === 'local') {
+            if (!this._quotaItem.label.text.startsWith('Local AI:')) {
+                this._quotaItem.label.text = 'Local AI: Click to check connection';
             }
             return;
         }
 
-        this._quotaItem.label.text = 'Checking connection…';
-        try {
-            await this._ext._callBackend(backend, "Reply only 'OK'", 'Test');
-            this._quotaItem.label.text = 'Connection: OK';
-            if (!silent) this.setDone('Connection OK');
-        } catch (e) {
-            const errStr = (e.message || String(e)).toLowerCase();
-            if (errStr.includes('hit your limit') || errStr.includes('capacity') || errStr.includes('429')) {
-                this._quotaItem.label.text = 'Connection: Quota limit reached';
-                if (!silent) this.setError('Quota limit reached');
+        if (!usage) {
+            this._quotaItem.label.text = 'Usage: No data yet';
+            return;
+        }
+
+        if (backend === 'claude-cli') {
+            const u = usage.claude;
+            if (u.calls === 0) {
+                this._quotaItem.label.text = 'Claude: No usage today';
             } else {
-                this._quotaItem.label.text = 'Connection: Error — check logs';
-                if (!silent) this.setError('Connection error');
+                const cost = u.costUsd >= 0.0001 ? `$${u.costUsd.toFixed(4)}` : '<$0.001';
+                const tokens = u.inputTokens + u.outputTokens;
+                const tokStr = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K tok` : `${tokens} tok`;
+                const calls  = `${u.calls} call${u.calls !== 1 ? 's' : ''}`;
+                this._quotaItem.label.text = `Claude: ${cost} · ${tokStr} · ${calls} today`;
+            }
+        } else if (backend === 'copilot-cli') {
+            const u = usage.copilot;
+            if (u.calls === 0) {
+                this._quotaItem.label.text = 'Copilot: No usage today';
+            } else {
+                const prem  = `${u.premiumRequests} premium req`;
+                const calls = `${u.calls} call${u.calls !== 1 ? 's' : ''}`;
+                this._quotaItem.label.text = `Copilot: ${prem} · ${calls} today`;
+            }
+        } else if (backend === 'gemini-cli') {
+            const u = usage.gemini;
+            if (u.calls === 0) {
+                this._quotaItem.label.text = 'Gemini: No usage today';
+            } else {
+                const tokStr = u.totalTokens >= 1000
+                    ? `${(u.totalTokens / 1000).toFixed(1)}K tok`
+                    : `${u.totalTokens} tok`;
+                const calls = `${u.calls} call${u.calls !== 1 ? 's' : ''}`;
+                this._quotaItem.label.text = `Gemini: ${tokStr} · ${calls} today`;
             }
         }
     }
@@ -400,28 +520,31 @@ class TextProIndicator extends PanelMenu.Button {
         const history = this._ext._history;
 
         if (!history || history.length === 0) {
+            this._historyMenu.label.text = 'History';
             const none = new PopupMenu.PopupMenuItem('No history yet', { reactive: false });
             this._historyMenu.menu.addMenuItem(none);
             return;
         }
 
+        this._historyMenu.label.text = `History (${history.length})`;
+
         [...history].reverse().forEach(entry => {
             const item = new PopupMenu.PopupBaseMenuItem();
 
-            const hbox = new St.BoxLayout({ vertical: false, x_expand: true, style: 'spacing: 8px;' });
+            const hbox = new St.BoxLayout({ vertical: false, x_expand: true });
 
-            // Copy icon
+            // Action-specific icon
             hbox.add_child(new St.Icon({
-                icon_name: 'edit-copy-symbolic',
+                icon_name: this._getActionIcon({ id: entry.actionId, name: entry.actionName }),
                 icon_size: 14,
                 y_align: Clutter.ActorAlign.START,
-                style: 'margin-top: 1px;',
+                style_class: 'llm-hist-entry-icon',
             }));
 
             // Content column
             const vbox = new St.BoxLayout({ vertical: true, x_expand: true });
 
-            // Top row: action name + time ago
+            // Header: action name + precise timestamp
             const topRow = new St.BoxLayout({ vertical: false, x_expand: true });
             topRow.add_child(new St.Label({
                 text: entry.actionName,
@@ -429,33 +552,58 @@ class TextProIndicator extends PanelMenu.Button {
                 x_expand: true,
             }));
             topRow.add_child(new St.Label({
-                text: _timeAgo(entry.timestamp),
+                text: _formatTimestamp(entry.timestamp),
                 style_class: 'llm-hist-time',
             }));
             vbox.add_child(topRow);
 
-            // Result preview
-            const preview = (entry.result || '')
-                .replace(/\n+/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
+            // Result preview — 90 chars
+            const preview = (entry.result || '').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
             vbox.add_child(new St.Label({
-                text: preview.length > 70 ? preview.substring(0, 68) + '…' : preview,
+                text: preview.length > 90 ? preview.substring(0, 88) + '…' : preview,
                 style_class: 'llm-hist-preview',
             }));
 
-            // Model / backend line
-            const model = (entry.modelInfo || '').split('\n')[0].replace('Model: ', '');
-            const backendLabel = entry.backend ? entry.backend.replace('-cli', '') : '';
-            const metaText = [backendLabel, model].filter(Boolean).join(' · ');
-            if (metaText) {
+            // Meta: backend · model · words in→out · duration · tokens
+            const modelRaw = (entry.modelInfo || '').split('\n')[0].replace('Model: ', '');
+            const model    = (modelRaw && modelRaw !== 'Default (Auto)') ? modelRaw.split('/').pop() : null;
+            const bk       = (entry.backend || '').replace('-cli', '') || null;
+            const wordInfo = (entry.inputWords != null && entry.resultWords != null)
+                ? `${entry.inputWords}→${entry.resultWords}w`
+                : null;
+            const durInfo  = entry.durationMs != null
+                ? `${(entry.durationMs / 1000).toFixed(1)}s`
+                : null;
+            const tokMatch = (entry.modelInfo || '').match(/Tokens:\s*(\d+)/);
+            const tokInfo  = tokMatch ? `${tokMatch[1]}tok` : null;
+
+            const metaParts = [bk, model, wordInfo, durInfo, tokInfo].filter(Boolean);
+            if (metaParts.length > 0) {
                 vbox.add_child(new St.Label({
-                    text: metaText,
+                    text: metaParts.join(' · '),
                     style_class: 'llm-hist-meta',
                 }));
             }
 
             hbox.add_child(vbox);
+
+            // Per-entry delete button
+            const delBtn = new St.Button({
+                child: new St.Icon({ icon_name: 'window-close-symbolic', icon_size: 10 }),
+                style_class: 'llm-hist-del-btn',
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            delBtn.connect('button-press-event', () => Clutter.EVENT_STOP);
+            delBtn.connect('clicked', () => {
+                const i = this._ext._history.findIndex(e => e.timestamp === entry.timestamp);
+                if (i >= 0) {
+                    this._ext._history.splice(i, 1);
+                    this._ext._saveHistory();
+                    this._rebuildHistory();
+                }
+            });
+            hbox.add_child(delBtn);
+
             item.add_child(hbox);
 
             item.connect('activate', () => {
@@ -467,13 +615,14 @@ class TextProIndicator extends PanelMenu.Button {
                         return GLib.SOURCE_REMOVE;
                     });
                 }
-                Main.notify('LLM Text Pro', 'History item copied to clipboard.');
+                const wc = entry.resultWords ?? _wc(entry.result);
+                Main.notify('LLM Text Pro', `Copied "${entry.actionName}" result — ${wc} words`);
             });
             this._historyMenu.menu.addMenuItem(item);
         });
 
         this._historyMenu.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const clearItem = new PopupMenu.PopupImageMenuItem('Clear History', 'user-trash-symbolic');
+        const clearItem = new PopupMenu.PopupImageMenuItem('Clear All History', 'user-trash-symbolic');
         clearItem.connect('activate', () => {
             this._ext._history = [];
             this._ext._saveHistory();
@@ -486,6 +635,7 @@ class TextProIndicator extends PanelMenu.Button {
 
     setProcessing(actionName) {
         this._cancelResetTimer();
+        if (this._resultPreviewItem) this._resultPreviewItem.visible = false;
         this._panelIcon.visible = false;
         this._iconLabel.visible = true;
         this._statusItem.label.text = `${actionName}…`;
@@ -560,6 +710,22 @@ class TextProIndicator extends PanelMenu.Button {
         }
     }
 
+    showResult(resultText, actionName) {
+        this._lastResultFull = resultText;
+
+        const MAX_CHARS = 280;
+        const preview = (resultText || '')
+            .replace(/\n+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        this._resultActionLabel.text = actionName;
+        this._resultTextLabel.text = preview.length > MAX_CHARS
+            ? preview.substring(0, MAX_CHARS - 1) + '…'
+            : preview;
+        this._resultPreviewItem.visible = true;
+    }
+
     // ── Cleanup ──────────────────────────────────────────────────────────────
 
     destroy() {
@@ -581,14 +747,16 @@ export default class LLMTextProExtension extends Extension {
 
     constructor(metadata) {
         super(metadata);
-        this._indicator       = null;
-        this._settings        = null;
-        this._httpSession     = null;
-        this._accelMap        = new Map();
-        this._displaySignalId = null;
-        this._settingsSignalId = null;
-        this._history         = [];
-        this._isProcessing    = false;
+        this._indicator          = null;
+        this._settings           = null;
+        this._httpSession        = null;
+        this._accelMap           = new Map();
+        this._displaySignalId    = null;
+        this._settingsSignalId   = null;
+        this._history            = [];
+        this._usage              = null;
+        this._isProcessing       = false;
+        this._currentActionName  = null;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -620,10 +788,79 @@ export default class LLMTextProExtension extends Extension {
         }
     }
 
+    // ── Usage tracking ───────────────────────────────────────────────────────
+
+    _usageFilePath() {
+        return GLib.build_filenamev([
+            GLib.get_user_data_dir(),
+            'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'usage.json',
+        ]);
+    }
+
+    _emptyUsage() {
+        return {
+            date:    new Date().toISOString().slice(0, 10),
+            claude:  { calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheTokens: 0 },
+            copilot: { calls: 0, premiumRequests: 0 },
+            gemini:  { calls: 0, totalTokens: 0, inputTokens: 0 },
+        };
+    }
+
+    _loadUsage() {
+        try {
+            const [ok, bytes] = GLib.file_get_contents(this._usageFilePath());
+            if (!ok) return this._emptyUsage();
+            const data  = JSON.parse(new TextDecoder().decode(bytes));
+            const today = new Date().toISOString().slice(0, 10);
+            // Reset if stored data is from a previous day
+            return data.date === today ? data : this._emptyUsage();
+        } catch (_) {
+            return this._emptyUsage();
+        }
+    }
+
+    _saveUsage(usage) {
+        try {
+            const path = this._usageFilePath();
+            GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+            GLib.file_set_contents(path, JSON.stringify(usage));
+        } catch (e) {
+            console.warn('[LLM Text Pro] Could not save usage:', e.message);
+        }
+    }
+
+    _accumulateUsage(backend, result) {
+        if (!result || !result.usage) return;
+
+        const today = new Date().toISOString().slice(0, 10);
+        if (this._usage.date !== today) this._usage = this._emptyUsage();
+
+        if (backend === 'claude-cli') {
+            const u = this._usage.claude;
+            u.calls++;
+            u.costUsd      += result.usage.costUsd      || 0;
+            u.inputTokens  += result.usage.inputTokens  || 0;
+            u.outputTokens += result.usage.outputTokens || 0;
+            u.cacheTokens  += result.usage.cacheTokens  || 0;
+        } else if (backend === 'copilot-cli') {
+            const u = this._usage.copilot;
+            u.calls++;
+            u.premiumRequests += result.usage.premiumRequests || 0;
+        } else if (backend === 'gemini-cli') {
+            const u = this._usage.gemini;
+            u.calls++;
+            u.totalTokens += result.usage.totalTokens || 0;
+            u.inputTokens += result.usage.inputTokens || 0;
+        }
+
+        this._saveUsage(this._usage);
+    }
+
     enable() {
         this._settings    = this.getSettings();
         this._httpSession = new Soup.Session();
         this._history     = this._loadHistory();
+        this._usage       = this._loadUsage();
 
         this._indicator = new TextProIndicator(this);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
@@ -663,9 +900,11 @@ export default class LLMTextProExtension extends Extension {
         this._httpSession?.abort();
         this._httpSession = null;
 
-        this._settings     = null;
-        this._history      = [];
-        this._isProcessing = false;
+        this._settings          = null;
+        this._history           = [];
+        this._usage             = null;
+        this._isProcessing      = false;
+        this._currentActionName = null;
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
@@ -732,13 +971,21 @@ export default class LLMTextProExtension extends Extension {
 
     async _processClipboard(action) {
         if (this._isProcessing) {
-            Main.notify('LLM Text Pro', 'Already processing, please wait…');
+            Main.notify('LLM Text Pro', `Still running "${this._currentActionName || 'an action'}" — please wait…`);
             return;
         }
-        this._isProcessing = true;
+        this._isProcessing      = true;
+        this._currentActionName = action.name;
         this._indicator?.setProcessing(action.name);
 
         const showNotif = this._settings.get_boolean('show-notifications');
+
+        // Resolve backend early so we can include it in the start notification
+        const globalBackend = this._settings.get_string('backend');
+        const backend       = (action.backend && action.backend !== 'default')
+            ? action.backend
+            : globalBackend;
+        const backendName   = backend.replace('-cli', '');
 
         try {
             const clipboard = St.Clipboard.get_default();
@@ -752,17 +999,16 @@ export default class LLMTextProExtension extends Extension {
                 });
             });
 
+            const inputWords = _wc(inputText);
+
             if (showNotif) {
-                Main.notify('LLM Text Pro', `Running "${action.name}"…`);
+                Main.notify('LLM Text Pro', `Running "${action.name}"…\n${inputWords} words · ${backendName}`);
             }
 
-            const globalBackend = this._settings.get_string('backend');
-            const backend = (action.backend && action.backend !== 'default')
-                ? action.backend
-                : globalBackend;
+            const startTime  = Date.now();
+            const result     = await this._callBackend(backend, action.prompt, inputText);
+            const durationMs = Date.now() - startTime;
 
-            const result = await this._callBackend(backend, action.prompt, inputText);
-            // All backends return { text, info } — extract the text string
             const resultText = (result && typeof result === 'object') ? result.text : String(result);
 
             if (!resultText) throw new Error('Backend returned an empty result.');
@@ -776,32 +1022,51 @@ export default class LLMTextProExtension extends Extension {
                 });
             }
 
+            const resultWords = _wc(resultText);
+            const tokMatch    = ((result && result.info) || '').match(/Tokens:\s*(\d+)/);
+            const modelInfo   = (result && result.info) ? result.info : '';
+
             const histSize = this._settings.get_int('history-size');
             this._history.push({
-                actionName: action.name,
-                input:      inputText.substring(0, 200),
-                result:     resultText,
-                timestamp:  Date.now(),
+                actionName:  action.name,
+                actionId:    action.id,
+                input:       inputText.substring(0, 500),
+                result:      resultText,
+                timestamp:   Date.now(),
                 backend,
-                modelInfo:  (result && result.info) ? result.info : '',
+                modelInfo,
+                inputWords,
+                resultWords,
+                durationMs,
             });
-            while (this._history.length > histSize) {
-                this._history.shift();
-            }
+            while (this._history.length > histSize) this._history.shift();
             this._saveHistory();
 
+            // Accumulate usage stats and refresh tray display
+            this._accumulateUsage(backend, result);
+            this._indicator?._updateQuotaDisplay();
+
             this._indicator?.setDone(action.name);
+            this._indicator?.showResult(resultText, action.name);
 
             if (showNotif) {
-                Main.notify('LLM Text Pro', `"${action.name}" complete!`);
+                const secs      = (durationMs / 1000).toFixed(1);
+                const metaParts = [
+                    `${inputWords}→${resultWords} words`,
+                    `${secs}s`,
+                    tokMatch ? `${tokMatch[1]} tokens` : null,
+                    backendName,
+                ].filter(Boolean);
+                Main.notify('LLM Text Pro', `"${action.name}" done\n${metaParts.join(' · ')}`);
             }
 
         } catch (e) {
-            console.error(`[LLM Text Pro] Error:`, e);
+            console.error('[LLM Text Pro] Error:', e);
             this._indicator?.setError(e.message);
-            Main.notifyError('LLM Text Pro', e.message);
+            Main.notifyError('LLM Text Pro', _friendlyError(e.message));
         } finally {
-            this._isProcessing = false;
+            this._isProcessing      = false;
+            this._currentActionName = null;
         }
     }
 
@@ -1016,8 +1281,14 @@ export default class LLMTextProExtension extends Extension {
                     let isJsonl = false;
 
                     if (out) {
+                        // Gemini may emit warning lines before the JSON object
+                        let rawOut = out;
+                        if (cliType === 'gemini') {
+                            const jsonStart = rawOut.indexOf('{');
+                            if (jsonStart > 0) rawOut = rawOut.slice(jsonStart);
+                        }
                         try {
-                            parsedJson = JSON.parse(out);
+                            parsedJson = JSON.parse(rawOut);
                         } catch (e) {
                             if (out.includes('{"type":"assistant.message"') || out.includes('{"type":"result"')) {
                                 isJsonl = true;
@@ -1052,6 +1323,7 @@ export default class LLMTextProExtension extends Extension {
                             let text = '';
                             let tokens = 0;
                             let modelName = 'Copilot Default';
+                            let premiumRequests = 0;
                             for (const line of out.split('\n')) {
                                 try {
                                     const j = JSON.parse(line);
@@ -1062,37 +1334,55 @@ export default class LLMTextProExtension extends Extension {
                                     if (j.type === 'session.tools_updated' && j.data?.model) {
                                         modelName = j.data.model;
                                     }
+                                    if (j.type === 'result' && j.usage) {
+                                        premiumRequests = j.usage.premiumRequests || 0;
+                                    }
                                 } catch (_e) {}
                             }
-                            resolve({ text: text.trim(), info: `Model: ${modelName}` + (tokens > 0 ? `\nTokens: ${tokens}` : '') });
+                            resolve({
+                                text: text.trim(),
+                                info: `Model: ${modelName}` + (tokens > 0 ? `\nTokens: ${tokens}` : ''),
+                                usage: { premiumRequests },
+                            });
                         } else if (parsedJson && !isJsonl) {
                             let text = '';
                             let info = '';
+                            let usageData = {};
                             if (cliType === 'gemini') {
                                 text = parsedJson.response || '';
                                 let modelName = 'Gemini Default';
-                                let tokens = 0;
+                                let totalTokens = 0;
+                                let inputTokens = 0;
                                 if (parsedJson.stats?.models) {
                                     const models = Object.keys(parsedJson.stats.models);
                                     if (models.length > 0) {
-                                        modelName = models[0];
-                                        tokens = parsedJson.stats.models[modelName].tokens?.total || 0;
+                                        modelName   = models[0];
+                                        const mstat = parsedJson.stats.models[modelName];
+                                        totalTokens = mstat.tokens?.total || 0;
+                                        inputTokens = mstat.tokens?.input || 0;
                                     }
                                 }
                                 info = `Model: ${modelName}`;
-                                if (tokens > 0) info += `\nTokens: ${tokens}`;
+                                if (totalTokens > 0) info += `\nTokens: ${totalTokens}`;
+                                usageData = { totalTokens, inputTokens };
                             } else {
+                                // Claude
                                 text = parsedJson.result || '';
-                                let tokens = (parsedJson.usage?.input_tokens || 0) + (parsedJson.usage?.output_tokens || 0);
+                                const inputTokens  = parsedJson.usage?.input_tokens || 0;
+                                const outputTokens = parsedJson.usage?.output_tokens || 0;
+                                const cacheTokens  = parsedJson.usage?.cache_read_input_tokens || 0;
+                                const costUsd      = parsedJson.total_cost_usd || 0;
                                 let modelName = 'Claude Default';
                                 if (parsedJson.modelUsage) {
                                     const models = Object.keys(parsedJson.modelUsage);
                                     if (models.length > 0) modelName = models[0];
                                 }
                                 info = `Model: ${modelName}`;
-                                if (tokens > 0) info += `\nTokens: ${tokens}`;
+                                const totalTokens = inputTokens + outputTokens;
+                                if (totalTokens > 0) info += `\nTokens: ${totalTokens}`;
+                                usageData = { costUsd, inputTokens, outputTokens, cacheTokens };
                             }
-                            resolve({ text: text.trim(), info });
+                            resolve({ text: text.trim(), info, usage: usageData });
                         } else {
                             resolve({ text: out, info: 'Model: Default (Auto)' });
                         }

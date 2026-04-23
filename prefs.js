@@ -7,6 +7,7 @@
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
+import Gdk from 'gi://Gdk';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Soup from 'gi://Soup';
@@ -133,12 +134,13 @@ function makeSpinRow(title, subtitle, settings, key, min, max) {
 export default class LLMTextProPreferences extends ExtensionPreferences {
 
     fillPreferencesWindow(window) {
-        window.set_default_size(720, 640);
+        window.set_default_size(760, 700);
         const settings = this.getSettings();
 
         window.add(this._buildBackendPage(settings));
         window.add(this._buildActionsPage(settings, window));
         window.add(this._buildGeneralPage(settings));
+        window.add(this._buildHistoryPage(window));
         window.add(this._buildAboutPage());
     }
 
@@ -153,13 +155,14 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         // ── Active backend chooser ──
         const backendGroup = new Adw.PreferencesGroup({
             title: 'Active AI Backend',
-            description: 'Choose which AI backend to use for all actions (can be overridden per-action).',
+            description: 'The global default for all actions. Each individual action can override this in the Actions editor.',
         });
         page.add(backendGroup);
 
         const backendRow = new Adw.ComboRow({
-            title: 'Backend',
-            model: new Gtk.StringList({ strings: ['Local API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI'] }),
+            title: 'Default Backend',
+            subtitle: 'Used for any action whose backend is set to "Default"',
+            model: new Gtk.StringList({ strings: ['Local API (Ollama / LM Studio)', 'Gemini CLI', 'Claude CLI', 'Copilot CLI'] }),
         });
         const backendKeys = ['local', 'gemini-cli', 'claude-cli', 'copilot-cli'];
         const currentBackend = settings.get_string('backend');
@@ -172,12 +175,106 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         // ── Local API ──
         const localGroup = new Adw.PreferencesGroup({
             title: 'Local API',
-            description: 'Ollama, LM Studio, or any OpenAI-compatible endpoint.',
+            description: 'Connect to Ollama, LM Studio, or any OpenAI-compatible endpoint running on your machine.',
         });
         page.add(localGroup);
         localGroup.add(makeEntry('API Endpoint', settings, 'api-endpoint'));
         localGroup.add(this._makeLocalModelEntry(settings));
         localGroup.add(makePasswordEntry('API Key', settings, 'api-key'));
+
+        // ── Connection test row ──
+        const connRow = new Adw.ActionRow({
+            title: 'Connection Status',
+            subtitle: 'Not tested — click Test to check the endpoint',
+            activatable: false,
+        });
+        const connIcon = new Gtk.Image({
+            icon_name: 'network-wired-symbolic',
+            pixel_size: 16,
+            valign: Gtk.Align.CENTER,
+            css_classes: ['dim-label'],
+        });
+        connRow.add_prefix(connIcon);
+        const testBtn = new Gtk.Button({
+            label: 'Test Connection',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['pill'],
+            tooltip_text: 'Ping the API endpoint and show which model is loaded',
+        });
+        connRow.add_suffix(testBtn);
+        localGroup.add(connRow);
+
+        testBtn.connect('clicked', async () => {
+            testBtn.set_sensitive(false);
+            testBtn.set_label('Testing…');
+            connRow.set_subtitle('Connecting…');
+            connIcon.set_from_icon_name('network-wired-symbolic');
+            connIcon.remove_css_class('success');
+            connIcon.remove_css_class('error');
+
+            try {
+                let url = settings.get_string('api-endpoint');
+                if (url.endsWith('/chat/completions'))
+                    url = url.replace('/chat/completions', '/models');
+                else if (!url.endsWith('/models'))
+                    url = url.replace(/\/?$/, '') + '/models';
+
+                const sess = new Soup.Session();
+                sess.timeout = 6;
+                const msg = Soup.Message.new('GET', url);
+                const apiKey = settings.get_string('api-key');
+                if (apiKey && apiKey !== 'random' && apiKey.trim() !== '')
+                    msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
+
+                const bytes = await new Promise((res, rej) => {
+                    sess.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (s, r) => {
+                        try { res(s.send_and_read_finish(r)); } catch (e) { rej(e); }
+                    });
+                });
+
+                if (msg.get_status() !== 200)
+                    throw new Error(`HTTP ${msg.get_status()} ${msg.get_reason_phrase()}`);
+
+                const json    = JSON.parse(new TextDecoder().decode(bytes.get_data()));
+                const models  = (json.data || []);
+                const primary = models[0];
+                let detail;
+                if (models.length === 0) {
+                    detail = 'Online — no model loaded';
+                } else {
+                    const name = primary.id.split('/').pop();
+                    const size = primary.size ? ` · ${(primary.size / 1e9).toFixed(1)} GB` : '';
+                    detail = `Online — ${name}${size}` +
+                        (models.length > 1 ? ` (+${models.length - 1} more)` : '');
+                }
+                connRow.set_subtitle(detail);
+                connIcon.set_from_icon_name('emblem-ok-symbolic');
+                connIcon.add_css_class('success');
+                testBtn.set_label('Connected ✓');
+                testBtn.add_css_class('success');
+            } catch (e) {
+                connRow.set_subtitle(`Offline — ${e.message.substring(0, 90)}`);
+                connIcon.set_from_icon_name('network-error-symbolic');
+                connIcon.add_css_class('error');
+                testBtn.set_label('Failed');
+                testBtn.add_css_class('destructive-action');
+            } finally {
+                testBtn.set_sensitive(true);
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, () => {
+                    testBtn.set_label('Test Connection');
+                    testBtn.remove_css_class('success');
+                    testBtn.remove_css_class('destructive-action');
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+        });
+
+        localGroup.add(makeSwitchRow(
+            'Auto-Start LM Studio',
+            'If the Local API is unreachable, automatically launch the LM Studio app in the background.',
+            settings,
+            'auto-start-lms'
+        ));
 
         // ── Gemini CLI ──
         this._makeCliGroup(page, settings, {
@@ -272,6 +369,73 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         const modelRow = this._makeModelEntryWithPresets(modelTitle, settings, modelKey, presets);
         group.add(modelRow);
 
+        // Today's usage stats row
+        const cliType   = pathKey.replace('-cli-path', ''); // 'gemini', 'claude', 'copilot'
+        const usageRow  = new Adw.ActionRow({ title: "Today's Usage", activatable: false });
+        usageRow.add_prefix(new Gtk.Image({
+            icon_name: 'utilities-system-monitor-symbolic',
+            pixel_size: 16,
+            valign: Gtk.Align.CENTER,
+            css_classes: ['dim-label'],
+        }));
+        const refreshUsageBtn = new Gtk.Button({
+            icon_name: 'view-refresh-symbolic',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+            tooltip_text: 'Refresh usage stats',
+        });
+        usageRow.add_suffix(refreshUsageBtn);
+        group.add(usageRow);
+
+        const updateUsageRow = () => {
+            try {
+                const usagePath = GLib.build_filenamev([
+                    GLib.get_user_data_dir(),
+                    'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'usage.json',
+                ]);
+                const [ok, bytes] = GLib.file_get_contents(usagePath);
+                if (!ok) { usageRow.set_subtitle('No usage data yet'); return; }
+                const data  = JSON.parse(new TextDecoder().decode(bytes));
+                const today = new Date().toISOString().slice(0, 10);
+                if (data.date !== today) { usageRow.set_subtitle('No usage today'); return; }
+
+                if (cliType === 'claude') {
+                    const u = data.claude;
+                    if (u.calls === 0) {
+                        usageRow.set_subtitle('No calls yet today');
+                    } else {
+                        const cost   = u.costUsd >= 0.0001 ? `$${u.costUsd.toFixed(4)}` : '<$0.001';
+                        const tokens = u.inputTokens + u.outputTokens;
+                        const tokStr = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K tokens` : `${tokens} tokens`;
+                        const cache  = u.cacheTokens > 0 ? ` · ${u.cacheTokens} cached` : '';
+                        usageRow.set_subtitle(`${cost} · ${tokStr}${cache} · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
+                    }
+                } else if (cliType === 'copilot') {
+                    const u = data.copilot;
+                    if (u.calls === 0) {
+                        usageRow.set_subtitle('No calls yet today');
+                    } else {
+                        usageRow.set_subtitle(`${u.premiumRequests} premium req · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
+                    }
+                } else if (cliType === 'gemini') {
+                    const u = data.gemini;
+                    if (u.calls === 0) {
+                        usageRow.set_subtitle('No calls yet today');
+                    } else {
+                        const tokStr = u.totalTokens >= 1000
+                            ? `${(u.totalTokens / 1000).toFixed(1)}K tokens`
+                            : `${u.totalTokens} tokens`;
+                        usageRow.set_subtitle(`${tokStr} · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
+                    }
+                }
+            } catch (_) {
+                usageRow.set_subtitle('No usage data');
+            }
+        };
+
+        refreshUsageBtn.connect('clicked', updateUsageRow);
+        updateUsageRow();
+
         const refresh = () => {
             const path = settings.get_string(pathKey);
             const found = isCliInstalled(path);
@@ -286,6 +450,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             statusIcon.set_from_icon_name(found ? 'emblem-ok-symbolic' : 'dialog-warning-symbolic');
             downloadBtn.set_visible(!found);
             modelRow.set_sensitive(found);
+            usageRow.set_sensitive(found);
         };
 
         settings.connect(`changed::${pathKey}`, refresh);
@@ -911,61 +1076,419 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             icon_name: 'preferences-system-symbolic',
         });
 
-        // ── Quota & API ──
-        const apiGroup = new Adw.PreferencesGroup({ 
-            title: 'Quota & API Monitoring',
-            description: 'Settings related to the background API health and quota checks.'
-        });
-        page.add(apiGroup);
-
-        apiGroup.add(makeSwitchRow(
-            'Periodic Quota Check',
-            'Silently ping the active CLI API every 5 minutes to update the Quota usage percentage in the tray menu. (Turn off to save API calls)',
-            settings,
-            'auto-check-quota'
-        ));
-
-        apiGroup.add(makeSwitchRow(
-            'Auto-Start LM Studio',
-            'If your Local API connection fails, automatically attempt to launch the LM Studio server in the background.',
-            settings,
-            'auto-start-lms'
-        ));
-
-        // ── UI & Behaviour ──
-        const behavGroup = new Adw.PreferencesGroup({ 
-            title: 'UI & Behaviour',
-            description: 'Configure how the extension interacts with your desktop.'
+        // ── Behaviour ──
+        const behavGroup = new Adw.PreferencesGroup({
+            title: 'Behaviour',
+            description: 'Control how the extension interacts with your desktop after a transformation.',
         });
         page.add(behavGroup);
 
         behavGroup.add(makeSwitchRow(
             'Auto-paste Result',
-            'Automatically simulate Ctrl+V to paste the processed text back into the active window.',
+            'Immediately simulate Ctrl+V after processing, pasting the result into whatever window was active.',
             settings,
             'auto-paste'
         ));
-        behavGroup.add(makeSwitchRow(
+
+        // ── Notifications ──
+        const notifGroup = new Adw.PreferencesGroup({
+            title: 'Notifications',
+            description: 'GNOME desktop notifications shown during and after transformations.',
+        });
+        page.add(notifGroup);
+
+        notifGroup.add(makeSwitchRow(
             'Show Desktop Notifications',
-            'Display GNOME notifications when processing starts, finishes, or encounters an error.',
+            'Display a notification when processing starts (with word count & backend) and when it completes (with timing and token usage).',
             settings,
             'show-notifications'
         ));
 
+        // ── API Monitoring ──
+        const apiGroup = new Adw.PreferencesGroup({
+            title: 'API Health Monitoring',
+            description: 'Background checks to keep the tray connection status up to date.',
+        });
+        page.add(apiGroup);
+
+        apiGroup.add(makeSwitchRow(
+            'Periodic Connection Check',
+            'Silently ping the active backend every 5 minutes to refresh the connection status shown in the tray menu.',
+            settings,
+            'auto-check-quota'
+        ));
+
         // ── History ──
-        const histGroup = new Adw.PreferencesGroup({ 
-            title: 'History Management',
-            description: 'Settings for the clipboard transformation history.'
+        const histGroup = new Adw.PreferencesGroup({
+            title: 'Transformation History',
+            description: 'The full history is viewable in the History tab. The tray menu shows the most recent entries.',
         });
         page.add(histGroup);
+
         histGroup.add(makeSpinRow(
             'Maximum History Size',
-            'Number of past transformations to keep accessible from the tray menu.',
+            'Number of past transformations to retain. Oldest entries are dropped when the limit is reached. Set to 0 to disable history.',
             settings,
             'history-size',
             0,
-            50
+            100
         ));
+
+        return page;
+    }
+
+    // ── History helpers ───────────────────────────────────────────────────────
+
+    _historyFilePath() {
+        return GLib.build_filenamev([
+            GLib.get_user_data_dir(),
+            'gnome-shell', 'extensions', this.metadata.uuid, 'history.json',
+        ]);
+    }
+
+    _loadHistoryFile() {
+        try {
+            const [ok, bytes] = GLib.file_get_contents(this._historyFilePath());
+            if (!ok) return [];
+            return JSON.parse(new TextDecoder().decode(bytes));
+        } catch (_) {
+            return [];
+        }
+    }
+
+    _saveHistoryFile(history) {
+        try {
+            GLib.file_set_contents(this._historyFilePath(), JSON.stringify(history));
+        } catch (e) {
+            console.warn('[LLM Text Pro] prefs: could not save history:', e.message);
+        }
+    }
+
+    // ── Page: History ─────────────────────────────────────────────────────────
+
+    _buildHistoryPage(window) {
+        const page = new Adw.PreferencesPage({
+            title: 'History',
+            icon_name: 'document-open-recent-symbolic',
+        });
+
+        const history = this._loadHistoryFile();
+
+        // ── Stats ─────────────────────────────────────────────────────────────
+        if (history.length > 0) {
+            const actionCounts  = {};
+            const backendCounts = {};
+            let totalDurationMs = 0, durationCount = 0;
+            let totalTokens = 0;
+            let totalResultWords = 0;
+
+            history.forEach(e => {
+                actionCounts[e.actionName]  = (actionCounts[e.actionName]  || 0) + 1;
+                const bk = (e.backend || 'local').replace('-cli', '');
+                backendCounts[bk] = (backendCounts[bk] || 0) + 1;
+                if (e.durationMs) { totalDurationMs += e.durationMs; durationCount++; }
+                const m = (e.modelInfo || '').match(/Tokens:\s*(\d+)/);
+                if (m) totalTokens += parseInt(m[1], 10);
+                totalResultWords += (e.resultWords || 0);
+            });
+
+            const mostUsed = Object.entries(actionCounts).sort((a, b) => b[1] - a[1])[0];
+            const bkList   = Object.entries(backendCounts).sort((a, b) => b[1] - a[1])
+                .map(([k, v]) => `${k} (${v})`).join(', ');
+            const avgDur   = durationCount > 0
+                ? `${(totalDurationMs / durationCount / 1000).toFixed(1)}s avg`
+                : null;
+
+            const statsGroup = new Adw.PreferencesGroup({ title: 'Statistics' });
+            page.add(statsGroup);
+
+            const stats = [
+                ['document-open-recent-symbolic', 'Total Transformations',
+                    `${history.length} entr${history.length === 1 ? 'y' : 'ies'}`],
+                ['starred-symbolic', 'Most Used Action',
+                    `${mostUsed[0]} — used ${mostUsed[1]}×`],
+                ['applications-science-symbolic', 'Backends Used', bkList],
+                avgDur
+                    ? ['preferences-system-time-symbolic', 'Average Duration', avgDur]
+                    : null,
+                totalTokens > 0
+                    ? ['dialog-information-symbolic', 'Total Tokens Used',
+                        totalTokens.toLocaleString() + ' tokens across all sessions']
+                    : null,
+                totalResultWords > 0
+                    ? ['document-edit-symbolic', 'Total Words Generated',
+                        totalResultWords.toLocaleString() + ' words']
+                    : null,
+            ].filter(Boolean);
+
+            stats.forEach(([icon, title, subtitle]) => {
+                const row = new Adw.ActionRow({ title, subtitle, activatable: false });
+                row.add_prefix(new Gtk.Image({
+                    icon_name: icon,
+                    pixel_size: 16,
+                    css_classes: ['dim-label'],
+                    valign: Gtk.Align.CENTER,
+                }));
+                statsGroup.add(row);
+            });
+        }
+
+        // ── Entries ───────────────────────────────────────────────────────────
+        const entriesGroup = new Adw.PreferencesGroup({
+            title: history.length > 0
+                ? `Entries  (${history.length})`
+                : 'Entries',
+            description: history.length === 0
+                ? 'No transformations recorded yet. Run any action from the tray icon.'
+                : 'Click an entry to expand and view the full input and generated result. ' +
+                  'Reopen Settings after new transformations to see them here.',
+        });
+        page.add(entriesGroup);
+
+        if (history.length === 0) {
+            const emptyRow = new Adw.ActionRow({
+                title: 'No history yet',
+                subtitle: 'Trigger any action from the tray menu to record your first transformation.',
+                activatable: false,
+            });
+            emptyRow.add_prefix(new Gtk.Image({
+                icon_name: 'document-open-recent-symbolic',
+                pixel_size: 32,
+                css_classes: ['dim-label'],
+                valign: Gtk.Align.CENTER,
+            }));
+            entriesGroup.add(emptyRow);
+        }
+
+        const entryWidgets = [];
+
+        [...history].reverse().forEach(entry => {
+            const modelRaw = (entry.modelInfo || '').split('\n')[0].replace('Model: ', '');
+            const model    = (modelRaw && modelRaw !== 'Default (Auto)')
+                ? modelRaw.split('/').pop() : null;
+            const bk       = (entry.backend || 'local').replace('-cli', '');
+            const wordInfo = (entry.inputWords != null && entry.resultWords != null)
+                ? `${entry.inputWords}→${entry.resultWords} words` : null;
+            const durStr   = entry.durationMs != null
+                ? `${(entry.durationMs / 1000).toFixed(2)}s` : null;
+            const tokMatch = (entry.modelInfo || '').match(/Tokens:\s*(\d+)/);
+
+            const d       = new Date(entry.timestamp);
+            const dateStr = d.toLocaleString([], {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+            });
+
+            const subtitleParts = [dateStr, bk, model, wordInfo, durStr].filter(Boolean);
+
+            const expander = new Adw.ExpanderRow({
+                title: entry.actionName,
+                subtitle: subtitleParts.join(' · '),
+            });
+            entryWidgets.push(expander);
+
+            // ── Backend & Model ──
+            const backendSubtitle = [
+                (entry.backend || 'local').replace('-cli', ' CLI').replace('local', 'Local API'),
+                model,
+            ].filter(Boolean).join(' — ');
+
+            const bkRow = new Adw.ActionRow({
+                title: 'Backend & Model',
+                subtitle: backendSubtitle || 'Unknown',
+                activatable: false,
+            });
+            bkRow.add_prefix(new Gtk.Image({
+                icon_name: 'applications-science-symbolic',
+                pixel_size: 16, css_classes: ['dim-label'], valign: Gtk.Align.CENTER,
+            }));
+            expander.add_row(bkRow);
+
+            // ── Performance ──
+            const perfParts = [
+                durStr       ? `${durStr} processing time`         : null,
+                entry.inputWords  != null ? `${entry.inputWords} words in`  : null,
+                entry.resultWords != null ? `${entry.resultWords} words out` : null,
+                tokMatch          ? `${tokMatch[1]} tokens used`              : null,
+            ].filter(Boolean);
+            if (perfParts.length > 0) {
+                const perfRow = new Adw.ActionRow({
+                    title: 'Performance',
+                    subtitle: perfParts.join('  ·  '),
+                    activatable: false,
+                });
+                perfRow.add_prefix(new Gtk.Image({
+                    icon_name: 'utilities-system-monitor-symbolic',
+                    pixel_size: 16, css_classes: ['dim-label'], valign: Gtk.Align.CENTER,
+                }));
+                expander.add_row(perfRow);
+            }
+
+            // ── Timestamp ──
+            const tsRow = new Adw.ActionRow({
+                title: 'Date & Time',
+                subtitle: new Date(entry.timestamp).toLocaleString(),
+                activatable: false,
+            });
+            tsRow.add_prefix(new Gtk.Image({
+                icon_name: 'preferences-system-time-symbolic',
+                pixel_size: 16, css_classes: ['dim-label'], valign: Gtk.Align.CENTER,
+            }));
+            expander.add_row(tsRow);
+
+            // ── Input text ──
+            if (entry.input) {
+                const inputExpander = new Adw.ExpanderRow({
+                    title: 'Input Text',
+                    subtitle: `${entry.inputWords ?? '?'} words  ·  click to expand`,
+                });
+                inputExpander.add_prefix(new Gtk.Image({
+                    icon_name: 'edit-paste-symbolic',
+                    pixel_size: 16, css_classes: ['dim-label'], valign: Gtk.Align.CENTER,
+                }));
+
+                const inputBuf  = new Gtk.TextBuffer();
+                inputBuf.set_text(entry.input, -1);
+                const inputView = new Gtk.TextView({
+                    buffer: inputBuf,
+                    editable: false,
+                    wrap_mode: Gtk.WrapMode.WORD_CHAR,
+                    cursor_visible: false,
+                    top_margin: 10, bottom_margin: 10,
+                    left_margin: 14, right_margin: 14,
+                    css_classes: ['dim-label'],
+                });
+                const inputScroll = new Gtk.ScrolledWindow({
+                    child: inputView,
+                    hscrollbar_policy: Gtk.PolicyType.NEVER,
+                    height_request: 90,
+                });
+                const inputFrame = new Gtk.Frame({
+                    child: inputScroll,
+                    css_classes: ['card'],
+                    margin_start: 12, margin_end: 12,
+                    margin_top: 4,   margin_bottom: 8,
+                });
+                const inputContentRow = new Adw.PreferencesRow({ activatable: false });
+                inputContentRow.set_child(inputFrame);
+                inputExpander.add_row(inputContentRow);
+                expander.add_row(inputExpander);
+            }
+
+            // ── Result text ──
+            if (entry.result) {
+                const resExpander = new Adw.ExpanderRow({
+                    title: 'Generated Result',
+                    subtitle: `${entry.resultWords ?? '?'} words  ·  click to expand`,
+                });
+                resExpander.add_prefix(new Gtk.Image({
+                    icon_name: 'object-select-symbolic',
+                    pixel_size: 16, css_classes: ['accent'], valign: Gtk.Align.CENTER,
+                }));
+
+                const copyBtn = new Gtk.Button({
+                    label: 'Copy',
+                    valign: Gtk.Align.CENTER,
+                    css_classes: ['pill', 'suggested-action'],
+                    tooltip_text: 'Copy the generated result to your clipboard',
+                });
+                resExpander.add_suffix(copyBtn);
+                copyBtn.connect('clicked', () => {
+                    try {
+                        Gdk.Display.get_default().get_clipboard().set_text(entry.result);
+                        copyBtn.set_label('Copied!');
+                    } catch (_e) {
+                        copyBtn.set_label('Error');
+                    }
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                        copyBtn.set_label('Copy');
+                        return GLib.SOURCE_REMOVE;
+                    });
+                });
+
+                const resBuf  = new Gtk.TextBuffer();
+                resBuf.set_text(entry.result, -1);
+                const resView = new Gtk.TextView({
+                    buffer: resBuf,
+                    editable: false,
+                    wrap_mode: Gtk.WrapMode.WORD_CHAR,
+                    cursor_visible: false,
+                    top_margin: 10, bottom_margin: 10,
+                    left_margin: 14, right_margin: 14,
+                });
+                const resScroll = new Gtk.ScrolledWindow({
+                    child: resView,
+                    hscrollbar_policy: Gtk.PolicyType.NEVER,
+                    height_request: 140,
+                });
+                const resFrame = new Gtk.Frame({
+                    child: resScroll,
+                    css_classes: ['card'],
+                    margin_start: 12, margin_end: 12,
+                    margin_top: 4,   margin_bottom: 8,
+                });
+                const resContentRow = new Adw.PreferencesRow({ activatable: false });
+                resContentRow.set_child(resFrame);
+                resExpander.add_row(resContentRow);
+                expander.add_row(resExpander);
+            }
+
+            // ── Delete entry ──
+            const delRow = new Adw.ButtonRow({
+                title: 'Delete This Entry',
+                start_icon_name: 'user-trash-symbolic',
+            });
+            delRow.add_css_class('destructive-action');
+            delRow.connect('activated', () => {
+                const hist = this._loadHistoryFile();
+                const i = hist.findIndex(e => e.timestamp === entry.timestamp);
+                if (i >= 0) {
+                    hist.splice(i, 1);
+                    this._saveHistoryFile(hist);
+                }
+                entriesGroup.remove(expander);
+                const idx = entryWidgets.indexOf(expander);
+                if (idx >= 0) entryWidgets.splice(idx, 1);
+                entriesGroup.set_title(
+                    entryWidgets.length > 0 ? `Entries  (${entryWidgets.length})` : 'Entries'
+                );
+            });
+            expander.add_row(delRow);
+
+            entriesGroup.add(expander);
+        });
+
+        // ── Clear All ─────────────────────────────────────────────────────────
+        if (history.length > 0) {
+            const actGroup = new Adw.PreferencesGroup();
+            page.add(actGroup);
+
+            const clearRow = new Adw.ButtonRow({
+                title: 'Clear All History',
+                start_icon_name: 'user-trash-symbolic',
+            });
+            clearRow.add_css_class('destructive-action');
+            clearRow.connect('activated', () => {
+                const dlg = new Adw.AlertDialog({
+                    heading: 'Clear All History?',
+                    body: `${history.length} transformation${history.length === 1 ? '' : 's'} will be permanently deleted.`,
+                });
+                dlg.add_response('cancel', 'Cancel');
+                dlg.add_response('clear', 'Clear All');
+                dlg.set_response_appearance('clear', Adw.ResponseAppearance.DESTRUCTIVE);
+                dlg.connect('response', (_d, resp) => {
+                    if (resp !== 'clear') return;
+                    this._saveHistoryFile([]);
+                    entryWidgets.forEach(w => { try { entriesGroup.remove(w); } catch (_) {} });
+                    entryWidgets.length = 0;
+                    entriesGroup.set_title('Entries');
+                    entriesGroup.set_description('History cleared. Reopen Settings to verify.');
+                    clearRow.set_sensitive(false);
+                });
+                dlg.present(window);
+            });
+            actGroup.add(clearRow);
+        }
 
         return page;
     }
@@ -978,37 +1501,237 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             icon_name: 'help-about-symbolic',
         });
 
-        const group = new Adw.PreferencesGroup({ title: 'LLM Text Pro' });
-        page.add(group);
+        const version  = this.metadata?.version  ?? '?';
+        const shellVer = (this.metadata?.['shell-version'] ?? []).join(', ');
 
-        const infoRow = new Adw.ActionRow({
-            title: 'LLM Text Pro',
-            subtitle: 'v11 — Built by David Sokolowski\nBased on "LLM Text Modifier" by Rishabh Bajpai',
-            selectable: false,
-        });
-        group.add(infoRow);
+        // ── App header ───────────────────────────────────────────────────────
+        const headerGroup = new Adw.PreferencesGroup();
+        page.add(headerGroup);
 
-        const tipsGroup = new Adw.PreferencesGroup({
-            title: 'Tips',
-            description:
-                '• Copy text first, then trigger a hotkey or click the tray icon.\n' +
-                '• Enable "Auto-paste" to have the result inserted immediately.\n' +
-                '• Each action can use a different backend — useful to send sensitive text to a local LLM only.\n' +
-                '• Hotkey format: <Control><Super>o  or  <Shift><Alt>t  etc.\n' +
-                '• The "Translate DE↔EN" action auto-detects language; edit its prompt to support other languages.\n' +
-                '• History is accessible from the tray icon — click any entry to re-copy it.',
+        const headerRow = new Adw.ActionRow({ activatable: false, selectable: false });
+        const headerBox = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 6,
+            margin_top: 20,
+            margin_bottom: 20,
+            halign: Gtk.Align.CENTER,
+            hexpand: true,
         });
+        const appIcon = new Gtk.Image({
+            icon_name: 'document-edit-symbolic',
+            pixel_size: 72,
+            css_classes: ['accent'],
+            margin_bottom: 6,
+        });
+        headerBox.append(appIcon);
+        headerBox.append(new Gtk.Label({
+            label: '<span size="xx-large" weight="bold">LLM Text Pro</span>',
+            use_markup: true,
+            halign: Gtk.Align.CENTER,
+        }));
+        headerBox.append(new Gtk.Label({
+            label: `Version ${version}  ·  GNOME Shell ${shellVer}`,
+            css_classes: ['dim-label'],
+            halign: Gtk.Align.CENTER,
+        }));
+        headerBox.append(new Gtk.Label({
+            label: 'Supercharge your clipboard with AI',
+            css_classes: ['title-4'],
+            halign: Gtk.Align.CENTER,
+            margin_top: 4,
+        }));
+        headerRow.add_prefix(headerBox);
+        headerGroup.add(headerRow);
+
+        // ── How It Works ─────────────────────────────────────────────────────
+        const howGroup = new Adw.PreferencesGroup({ title: 'How It Works' });
+        page.add(howGroup);
+
+        [
+            ['1', 'Copy text to your clipboard',
+             'Select any text in any app and press Ctrl+C'],
+            ['2', 'Trigger an action',
+             'Press a hotkey (e.g. Ctrl+Alt+G) or open the tray menu and click an action'],
+            ['3', 'AI transforms your text',
+             'The processed result is placed back on your clipboard'],
+            ['4', 'Paste the result',
+             'Press Ctrl+V anywhere — or enable Auto-paste to insert it automatically'],
+        ].forEach(([num, title, subtitle]) => {
+            const row = new Adw.ActionRow({ title, subtitle, activatable: false });
+            row.add_prefix(new Gtk.Label({
+                label: num,
+                css_classes: ['title-3', 'accent'],
+                valign: Gtk.Align.CENTER,
+                width_chars: 2,
+                halign: Gtk.Align.CENTER,
+            }));
+            howGroup.add(row);
+        });
+
+        // ── Features ─────────────────────────────────────────────────────────
+        const featGroup = new Adw.PreferencesGroup({ title: 'Features' });
+        page.add(featGroup);
+
+        [
+            ['document-edit-symbolic',       '16 built-in text actions',    'Grammar, improve, translate, summarise, reply, code refactor, and more'],
+            ['list-add-symbolic',            'Fully customisable actions',   'Add, edit, reorder, or disable any action — with custom AI prompts'],
+            ['computer-symbolic',            'Multiple AI backends',         'Local (Ollama / LM Studio), Gemini CLI, Claude CLI, and Copilot CLI'],
+            ['security-medium-symbolic',     'Per-action backend override',  'Send sensitive text only to your local model, not a cloud API'],
+            ['document-open-recent-symbolic','Transformation history',       'Re-copy any past result directly from the tray menu'],
+            ['input-keyboard-symbolic',      'Global hotkeys',               'Trigger any action from anywhere without opening the tray'],
+            ['edit-paste-symbolic',          'Auto-paste',                   'Processed text is pasted back into the active window automatically'],
+        ].forEach(([icon, title, subtitle]) => {
+            const row = new Adw.ActionRow({ title, subtitle, activatable: false });
+            row.add_prefix(new Gtk.Image({
+                icon_name: icon,
+                pixel_size: 16,
+                css_classes: ['dim-label'],
+                valign: Gtk.Align.CENTER,
+            }));
+            featGroup.add(row);
+        });
+
+        // ── Default Hotkeys ───────────────────────────────────────────────────
+        const hotkeyGroup = new Adw.PreferencesGroup({
+            title: 'Default Hotkeys',
+            description: 'All hotkeys can be changed or removed in the Actions page.',
+        });
+        page.add(hotkeyGroup);
+
+        [
+            ['Ctrl + Alt + G', 'Fix Grammar'],
+            ['Ctrl + Alt + I', 'Improve Text'],
+            ['Ctrl + Alt + H', 'Remove AI Patterns'],
+            ['Ctrl + Alt + M', 'Reply to Message / Mail'],
+            ['Ctrl + Alt + T', 'Translate DE ↔ EN'],
+            ['Ctrl + Alt + P', 'Translate DE ↔ PL'],
+            ['Ctrl + Alt + K', 'Write from Keywords'],
+        ].forEach(([hotkey, action]) => {
+            const row = new Adw.ActionRow({ title: action, activatable: false });
+            row.add_prefix(new Gtk.Image({
+                icon_name: 'input-keyboard-symbolic',
+                pixel_size: 14,
+                css_classes: ['dim-label'],
+                valign: Gtk.Align.CENTER,
+            }));
+            const badge = new Gtk.Label({
+                label: hotkey,
+                css_classes: ['caption', 'monospace'],
+                valign: Gtk.Align.CENTER,
+            });
+            row.add_suffix(badge);
+            hotkeyGroup.add(row);
+        });
+
+        // ── Backend Setup ─────────────────────────────────────────────────────
+        const setupGroup = new Adw.PreferencesGroup({
+            title: 'Backend Quick Setup',
+            description: 'Click a row to open the project page for installation instructions.',
+        });
+        page.add(setupGroup);
+
+        const _openUrl = (url) => {
+            try { Gtk.show_uri(null, url, GLib.CURRENT_TIME); }
+            catch (e) { console.warn('[LLM Text Pro] Could not open URL:', e.message); }
+        };
+
+        [
+            {
+                title:    'Local — Ollama',
+                subtitle: 'ollama serve  ·  Endpoint: http://127.0.0.1:11434/v1/chat/completions',
+                icon:     'computer-symbolic',
+                url:      'https://ollama.com',
+            },
+            {
+                title:    'Local — LM Studio',
+                subtitle: 'Start the LM Studio app  ·  Endpoint: http://127.0.0.1:1234/v1/chat/completions',
+                icon:     'computer-symbolic',
+                url:      'https://lmstudio.ai',
+            },
+            {
+                title:    'Gemini CLI',
+                subtitle: 'npm install -g @google/gemini-cli  →  run gemini once to authenticate',
+                icon:     'applications-science-symbolic',
+                url:      'https://github.com/google-gemini/gemini-cli',
+            },
+            {
+                title:    'Claude CLI (Claude Code)',
+                subtitle: 'Install from claude.ai/code  →  run claude once to authenticate',
+                icon:     'applications-science-symbolic',
+                url:      'https://claude.ai/code',
+            },
+            {
+                title:    'Copilot CLI',
+                subtitle: 'Install GitHub Copilot CLI  →  copilot auth login',
+                icon:     'applications-science-symbolic',
+                url:      'https://github.com/github/copilot-cli',
+            },
+        ].forEach(({ title, subtitle, icon, url }) => {
+            const row = new Adw.ActionRow({ title, subtitle, activatable: true });
+            row.add_prefix(new Gtk.Image({
+                icon_name: icon,
+                pixel_size: 16,
+                css_classes: ['dim-label'],
+                valign: Gtk.Align.CENTER,
+            }));
+            const linkBtn = new Gtk.Button({
+                icon_name: 'go-next-symbolic',
+                valign: Gtk.Align.CENTER,
+                css_classes: ['flat'],
+                tooltip_text: `Open: ${url}`,
+            });
+            linkBtn.connect('clicked', () => _openUrl(url));
+            row.add_suffix(linkBtn);
+            row.connect('activated', () => _openUrl(url));
+            setupGroup.add(row);
+        });
+
+        // ── Tips ─────────────────────────────────────────────────────────────
+        const tipsGroup = new Adw.PreferencesGroup({ title: 'Tips & Tricks' });
         page.add(tipsGroup);
 
-        const backendGroup = new Adw.PreferencesGroup({
-            title: 'Backend Setup',
-            description:
-                'Local API: Start Ollama (ollama serve) or LM Studio, then set the endpoint to http://127.0.0.1:11434/v1/chat/completions (Ollama) or http://127.0.0.1:1234/v1/chat/completions (LM Studio).\n\n' +
-                'Gemini CLI: Install via  npm install -g @google/gemini-cli  then run  gemini  once to authenticate.\n\n' +
-                'Claude CLI: Install Claude Code from https://claude.ai/code then run  claude  once to authenticate.\n\n' +
-                'Copilot CLI: Use GitHub Copilot CLI via  copilot  (experimental).',
+        [
+            ['dialog-information-symbolic',
+             'Hotkey format',
+             '<Control><Alt>g  or  <Shift><Super>t — combine any modifier keys'],
+            ['accessories-dictionary-symbolic',
+             'Custom translate pairs',
+             'Edit the translate action prompt to support any language pair you need'],
+            ['security-medium-symbolic',
+             'Privacy-first',
+             'Assign sensitive actions to the Local backend — they never leave your machine'],
+            ['document-open-recent-symbolic',
+             'Re-use results',
+             'Click any history entry in the tray to copy that result back to the clipboard'],
+        ].forEach(([icon, title, subtitle]) => {
+            const row = new Adw.ActionRow({ title, subtitle, activatable: false });
+            row.add_prefix(new Gtk.Image({
+                icon_name: icon,
+                pixel_size: 16,
+                css_classes: ['dim-label'],
+                valign: Gtk.Align.CENTER,
+            }));
+            tipsGroup.add(row);
         });
-        page.add(backendGroup);
+
+        // ── Credits ───────────────────────────────────────────────────────────
+        const creditsGroup = new Adw.PreferencesGroup({ title: 'Credits' });
+        page.add(creditsGroup);
+
+        [
+            ['avatar-default-symbolic',  'Author',    'David Sokolowski'],
+            ['document-edit-symbolic',   'Based On',  'LLM Text Modifier by Rishabh Bajpai'],
+            ['text-x-generic-symbolic',  'License',   'GNU General Public License v2 or later'],
+        ].forEach(([icon, title, subtitle]) => {
+            const row = new Adw.ActionRow({ title, subtitle, activatable: false });
+            row.add_prefix(new Gtk.Image({
+                icon_name: icon,
+                pixel_size: 16,
+                css_classes: ['dim-label'],
+                valign: Gtk.Align.CENTER,
+            }));
+            creditsGroup.add(row);
+        });
 
         return page;
     }

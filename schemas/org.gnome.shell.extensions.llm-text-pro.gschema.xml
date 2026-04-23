@@ -83,7 +83,7 @@
     </key>
 
     <key name="history-size" type="i">
-      <default>10</default>
+      <default>25</default>
       <summary>Number of past transformations to keep in history</summary>
     </key>
 
