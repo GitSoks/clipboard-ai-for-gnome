@@ -139,6 +139,22 @@
     background-color: rgba(224, 27, 36, 0.14);
 }
 
+/* ── History item card (dark bg so text is always readable) ──────────────── */
+
+.llm-hist-item {
+    background-color: rgba(10, 12, 20, 0.86) !important;
+    border-radius: 5px;
+    margin: 1px 4px 2px 4px;
+}
+
+.llm-hist-item:hover {
+    background-color: rgba(40, 45, 68, 0.92) !important;
+}
+
+.llm-hist-hbox {
+    max-width: 380px;
+}
+
 /* ── Result preview ───────────────────────────────────────────────────────── */
 
 .llm-result-box {
@@ -146,6 +162,7 @@
     border-radius: 6px;
     border: 1px solid rgba(87, 227, 137, 0.18);
     padding: 7px 10px;
+    max-width: 380px;
 }
 
 .llm-result-icon {
@@ -169,8 +186,9 @@
 }
 
 .llm-result-text {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.72);
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.82);
     margin-top: 5px;
-    max-height: 100px;
+    max-height: 200px;
+    max-width: 360px;
 }

@@ -285,16 +285,24 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             modelKey: 'gemini-model',
             presets: [
                 'Default (Auto)',
-                'gemini-3.1-pro-preview',
-                'gemini-3.0-flash-preview',
+                // Shorthand aliases — resolved by the CLI at runtime (work in headless -p mode)
+                'auto',       // → gemini-3-pro-preview (or gemini-2.5-pro without preview access)
+                'pro',        // → same as auto
+                'flash',      // → gemini-3-flash-preview
+                'flash-lite', // → gemini-2.5-flash-lite
+                // Gemini 3 series (current production models)
+                'gemini-3-pro-preview',
+                'gemini-3-flash-preview',
+                'gemini-3.1-pro-preview',       // requires experimental.useGemini3_1 setting
+                'gemini-3.1-flash-lite-preview',
+                // Gemini 2.5 series (stable GA)
                 'gemini-2.5-pro',
                 'gemini-2.5-flash',
-                'gemini-2.0-pro-exp-02-05',
+                'gemini-2.5-flash-lite',
+                // Legacy (still accepted as open strings)
                 'gemini-2.0-flash',
-                'gemini-2.0-flash-lite',
                 'gemini-1.5-pro',
                 'gemini-1.5-flash',
-                'gemini-1.5-flash-8b',
             ],
             downloadUrl: 'https://github.com/google-gemini/gemini-cli',
         });
@@ -308,18 +316,32 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             modelKey: 'claude-model',
             presets: [
                 'Default (Auto)',
+                // Shorthand aliases — resolved by Claude Code CLI's parseUserSpecifiedModel()
+                'opus',   // → claude-opus-4-7 (current flagship)
+                'sonnet', // → claude-sonnet-4-6
+                'haiku',  // → claude-haiku-4-5
+                'best',   // → claude-opus-4-7
+                // Full Claude 4.x IDs (current)
+                'claude-opus-4-7',
+                'claude-sonnet-4-6',
+                'claude-haiku-4-5',
+                // Full Claude 4.x IDs (previous)
+                'claude-opus-4-6',
+                'claude-opus-4-5',
+                'claude-sonnet-4-5',
+                // Legacy Claude 3.x
                 'claude-3-7-sonnet-20250219',
                 'claude-3-5-sonnet-20241022',
                 'claude-3-5-haiku-20241022',
                 'claude-3-opus-20240229',
-                'claude-sonnet-4-6',
-                'claude-opus-4-6',
-                'claude-haiku-4-5-20251001',
             ],
             downloadUrl: 'https://claude.ai/code',
         });
 
         // ── Copilot CLI ──
+        // IMPORTANT: Copilot CLI uses dot notation for version numbers (claude-sonnet-4.6)
+        // which differs from the Anthropic API format (claude-sonnet-4-6 with dashes).
+        // Only 'auto' is a special alias; no tier shortcuts like 'sonnet'/'opus' exist here.
         this._makeCliGroup(page, settings, {
             title: 'Copilot CLI',
             description: 'Requires GitHub Copilot CLI ("copilot") installed and authenticated.',
@@ -328,10 +350,20 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             modelKey: 'copilot-model',
             presets: [
                 'Default (Auto)',
-                'gpt-4o',
-                'claude-3.5-sonnet',
-                'gpt-4',
-                'gpt-3.5-turbo',
+                'auto',              // let Copilot pick best available model automatically
+                // Claude via Copilot — dot notation (verified from copilot help config)
+                'claude-sonnet-4.6', // current default
+                'claude-sonnet-4.5',
+                'claude-haiku-4.5',
+                'claude-opus-4.7',
+                'claude-opus-4.6',
+                'claude-opus-4.6-fast',
+                'claude-opus-4.5',
+                // OpenAI via Copilot
+                'gpt-5.4',
+                'gpt-5.4-mini',
+                'gpt-5-mini',
+                'gpt-4.1',
             ],
             downloadUrl: 'https://github.com/github/copilot-cli',
         });
@@ -391,7 +423,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             try {
                 const usagePath = GLib.build_filenamev([
                     GLib.get_user_data_dir(),
-                    'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'usage.json',
+                    'llm-text-pro@sokolowski.at', 'usage.json',
                 ]);
                 const [ok, bytes] = GLib.file_get_contents(usagePath);
                 if (!ok) { usageRow.set_subtitle('No usage data yet'); return; }
@@ -1142,7 +1174,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
     _historyFilePath() {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'gnome-shell', 'extensions', this.metadata.uuid, 'history.json',
+            'llm-text-pro@sokolowski.at', 'history.json',
         ]);
     }
 
@@ -1158,7 +1190,9 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
     _saveHistoryFile(history) {
         try {
-            GLib.file_set_contents(this._historyFilePath(), JSON.stringify(history));
+            const path = this._historyFilePath();
+            GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+            GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(history)));
         } catch (e) {
             console.warn('[LLM Text Pro] prefs: could not save history:', e.message);
         }

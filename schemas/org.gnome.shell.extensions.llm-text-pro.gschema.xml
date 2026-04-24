@@ -28,8 +28,8 @@
 
     <!-- ── Gemini CLI ─────────────────────────────────────────────── -->
     <key name="gemini-model" type="s">
-      <default>'gemini-2.0-flash'</default>
-      <summary>Gemini model for CLI calls</summary>
+      <default>'flash'</default>
+      <summary>Gemini model for CLI calls. Accepts full IDs or CLI aliases: auto, pro, flash, flash-lite.</summary>
     </key>
 
     <key name="gemini-cli-path" type="s">
@@ -39,8 +39,8 @@
 
     <!-- ── Claude CLI ─────────────────────────────────────────────── -->
     <key name="claude-model" type="s">
-      <default>'claude-sonnet-4-6'</default>
-      <summary>Claude model for CLI calls</summary>
+      <default>'opus'</default>
+      <summary>Claude model for CLI calls. Accepts full IDs or CLI aliases: opus, sonnet, haiku, best.</summary>
     </key>
 
     <key name="claude-cli-path" type="s">

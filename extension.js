@@ -530,8 +530,9 @@ class TextProIndicator extends PanelMenu.Button {
 
         [...history].reverse().forEach(entry => {
             const item = new PopupMenu.PopupBaseMenuItem();
+            item.add_style_class_name('llm-hist-item');
 
-            const hbox = new St.BoxLayout({ vertical: false, x_expand: true });
+            const hbox = new St.BoxLayout({ vertical: false, x_expand: true, style_class: 'llm-hist-hbox' });
 
             // Action-specific icon
             hbox.add_child(new St.Icon({
@@ -713,16 +714,17 @@ class TextProIndicator extends PanelMenu.Button {
     showResult(resultText, actionName) {
         this._lastResultFull = resultText;
 
-        const MAX_CHARS = 280;
-        const preview = (resultText || '')
-            .replace(/\n+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
+        const MAX_LINES = 7;
+        const MAX_LINE_LEN = 70;
+        const rawLines = (resultText || '').trim().split('\n');
+        const truncLines = rawLines
+            .slice(0, MAX_LINES)
+            .map(l => l.length > MAX_LINE_LEN ? l.substring(0, MAX_LINE_LEN - 1) + '…' : l);
+        let preview = truncLines.join('\n');
+        if (rawLines.length > MAX_LINES) preview += '\n…';
 
         this._resultActionLabel.text = actionName;
-        this._resultTextLabel.text = preview.length > MAX_CHARS
-            ? preview.substring(0, MAX_CHARS - 1) + '…'
-            : preview;
+        this._resultTextLabel.text = preview;
         this._resultPreviewItem.visible = true;
     }
 
@@ -764,13 +766,29 @@ export default class LLMTextProExtension extends Extension {
     _historyFilePath() {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'history.json',
+            'llm-text-pro@sokolowski.at', 'history.json',
         ]);
     }
 
     _loadHistory() {
         try {
-            const [ok, bytes] = GLib.file_get_contents(this._historyFilePath());
+            const path = this._historyFilePath();
+            // Migrate from old path inside the extension directory (wiped on updates)
+            const oldPath = GLib.build_filenamev([
+                GLib.get_user_data_dir(),
+                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'history.json',
+            ]);
+            if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
+                 GLib.file_test(oldPath, GLib.FileTest.EXISTS)) {
+                const [ok, bytes] = GLib.file_get_contents(oldPath);
+                if (ok) {
+                    const data = JSON.parse(new TextDecoder().decode(bytes));
+                    GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+                    GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(data)));
+                    return data;
+                }
+            }
+            const [ok, bytes] = GLib.file_get_contents(path);
             if (!ok) return [];
             return JSON.parse(new TextDecoder().decode(bytes));
         } catch (_) {
@@ -782,7 +800,7 @@ export default class LLMTextProExtension extends Extension {
         try {
             const path = this._historyFilePath();
             GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
-            GLib.file_set_contents(path, JSON.stringify(this._history));
+            GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(this._history)));
         } catch (e) {
             console.warn('[LLM Text Pro] Could not save history:', e.message);
         }
@@ -793,7 +811,7 @@ export default class LLMTextProExtension extends Extension {
     _usageFilePath() {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'usage.json',
+            'llm-text-pro@sokolowski.at', 'usage.json',
         ]);
     }
 
@@ -808,7 +826,25 @@ export default class LLMTextProExtension extends Extension {
 
     _loadUsage() {
         try {
-            const [ok, bytes] = GLib.file_get_contents(this._usageFilePath());
+            const path = this._usageFilePath();
+            // Migrate from old path inside the extension directory (wiped on updates)
+            const oldPath = GLib.build_filenamev([
+                GLib.get_user_data_dir(),
+                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'usage.json',
+            ]);
+            if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
+                 GLib.file_test(oldPath, GLib.FileTest.EXISTS)) {
+                const [ok, bytes] = GLib.file_get_contents(oldPath);
+                if (ok) {
+                    const data  = JSON.parse(new TextDecoder().decode(bytes));
+                    const today = new Date().toISOString().slice(0, 10);
+                    const result = data.date === today ? data : this._emptyUsage();
+                    GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+                    GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(result)));
+                    return result;
+                }
+            }
+            const [ok, bytes] = GLib.file_get_contents(path);
             if (!ok) return this._emptyUsage();
             const data  = JSON.parse(new TextDecoder().decode(bytes));
             const today = new Date().toISOString().slice(0, 10);
@@ -823,7 +859,7 @@ export default class LLMTextProExtension extends Extension {
         try {
             const path = this._usageFilePath();
             GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
-            GLib.file_set_contents(path, JSON.stringify(usage));
+            GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(usage)));
         } catch (e) {
             console.warn('[LLM Text Pro] Could not save usage:', e.message);
         }
