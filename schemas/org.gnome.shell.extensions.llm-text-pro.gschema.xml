@@ -7,7 +7,7 @@
     <key name="backend" type="s">
       <default>'local'</default>
       <summary>Active AI backend</summary>
-      <description>Which backend to use: 'local', 'gemini-cli', 'claude-cli', or 'copilot-cli'.</description>
+      <description>Which backend to use: 'local', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli', or 'opencode-cli'.</description>
     </key>
 
     <!-- ── Local API ─────────────────────────────────────────────── -->
@@ -59,10 +59,47 @@
       <summary>Path or command name for the Copilot CLI binary</summary>
     </key>
 
+    <!-- ── Codex CLI ──────────────────────────────────────────────── -->
+    <key name="codex-model" type="s">
+      <default>'Default (Auto)'</default>
+      <summary>Codex model for CLI calls (e.g. gpt-5.4, gpt-5.4-mini, gpt-5.3-codex)</summary>
+    </key>
+
+    <key name="codex-cli-path" type="s">
+      <default>'codex'</default>
+      <summary>Path or command name for the OpenAI Codex CLI binary</summary>
+    </key>
+
+    <key name="codex-api-key" type="s">
+      <default>''</default>
+      <summary>CODEX_API_KEY for OpenAI Codex CLI (leave empty to use OAuth login or CODEX_API_KEY from session env)</summary>
+    </key>
+
+    <!-- ── OpenCode CLI ────────────────────────────────────────────── -->
+    <key name="opencode-model" type="s">
+      <default>'Default (Auto)'</default>
+      <summary>OpenCode model for CLI calls</summary>
+    </key>
+
+    <key name="opencode-cli-path" type="s">
+      <default>'opencode'</default>
+      <summary>Path or command name for the OpenCode CLI binary</summary>
+    </key>
+
     <!-- ── Behaviour ──────────────────────────────────────────────── -->
     <key name="auto-paste" type="b">
       <default>false</default>
       <summary>Automatically paste result into the active window</summary>
+    </key>
+
+    <key name="auto-action-enabled" type="b">
+      <default>false</default>
+      <summary>Automatically trigger an action when copying new text</summary>
+    </key>
+
+    <key name="auto-action-id" type="s">
+      <default>''</default>
+      <summary>ID of the action to automatically trigger</summary>
     </key>
 
     <key name="show-notifications" type="b">

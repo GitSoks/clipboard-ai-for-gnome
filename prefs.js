@@ -162,9 +162,9 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         const backendRow = new Adw.ComboRow({
             title: 'Default Backend',
             subtitle: 'Used for any action whose backend is set to "Default"',
-            model: new Gtk.StringList({ strings: ['Local API (Ollama / LM Studio)', 'Gemini CLI', 'Claude CLI', 'Copilot CLI'] }),
+            model: new Gtk.StringList({ strings: ['Local API (Ollama / LM Studio)', 'Gemini CLI', 'Claude CLI', 'Copilot CLI', 'Codex CLI', 'OpenCode CLI'] }),
         });
-        const backendKeys = ['local', 'gemini-cli', 'claude-cli', 'copilot-cli'];
+        const backendKeys = ['local', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli', 'opencode-cli'];
         const currentBackend = settings.get_string('backend');
         backendRow.set_selected(Math.max(0, backendKeys.indexOf(currentBackend)));
         backendRow.connect('notify::selected', () => {
@@ -368,10 +368,54 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             downloadUrl: 'https://github.com/github/copilot-cli',
         });
 
+        // ── Codex CLI ──
+        // Uses: codex exec --skip-git-repo-check --ephemeral --full-auto [-m MODEL] "PROMPT"
+        // Auth: CODEX_API_KEY env var (set below) or OAuth via 'codex login'
+        // Output: plain text to stdout — no --output-format flag
+        this._makeCliGroup(page, settings, {
+            title: 'Codex CLI',
+            description: 'Requires OpenAI Codex CLI installed (npm install -g @openai/codex) and authenticated.',
+            pathKey: 'codex-cli-path',
+            modelTitle: 'Codex Model',
+            modelKey: 'codex-model',
+            apiKeyKey: 'codex-api-key',
+            apiKeyTitle: 'API Key (CODEX_API_KEY)',
+            presets: [
+                'Default (Auto)',
+                // Full model IDs (verified from developers.openai.com/codex/models)
+                'gpt-5.5',            // newest frontier
+                'gpt-5.4',            // flagship (CLI default)
+                'gpt-5.4-mini',       // fast / cost-effective
+                'gpt-5.3-codex',      // optimised for software engineering
+                'gpt-5.3-codex-spark',// near-instant iteration (Pro plan only)
+                'gpt-5.2',            // previous general-purpose
+            ],
+            downloadUrl: 'https://developers.openai.com/codex/cli',
+        });
+
+        // ── OpenCode CLI ──
+        this._makeCliGroup(page, settings, {
+            title: 'OpenCode CLI',
+            description: 'Requires OpenCode CLI installed (e.g. npm i -g opencode) and configured.',
+            pathKey: 'opencode-cli-path',
+            modelTitle: 'OpenCode Model',
+            modelKey: 'opencode-model',
+            presets: [
+                'Default (Auto)',
+                'anthropic/claude-3.5-sonnet',
+                'openai/gpt-4o',
+                'google/gemini-2.5-pro',
+                'deepseek/deepseek-chat',
+                'xai/grok-2',
+            ],
+            downloadUrl: 'https://opencode.ai',
+            fetchCommand: ['opencode', 'models'],
+        });
+
         return page;
     }
 
-    _makeCliGroup(page, settings, { title, description, pathKey, modelTitle, modelKey, presets, downloadUrl }) {
+    _makeCliGroup(page, settings, { title, description, pathKey, modelTitle, modelKey, presets, downloadUrl, apiKeyKey, apiKeyTitle, fetchCommand }) {
         const group = new Adw.PreferencesGroup({ title, description });
         page.add(group);
 
@@ -398,11 +442,25 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         group.add(pathRow);
 
         // Model entry — grayed out when CLI is not found
-        const modelRow = this._makeModelEntryWithPresets(modelTitle, settings, modelKey, presets);
+        const modelRow = this._makeModelEntryWithPresets(modelTitle, settings, modelKey, presets, fetchCommand);
         group.add(modelRow);
 
+        // Optional API key entry (Codex only)
+        let apiKeyRow = null;
+        if (apiKeyKey) {
+            apiKeyRow = makePasswordEntry(apiKeyTitle || 'API Key', settings, apiKeyKey);
+            group.add(apiKeyRow);
+            // Description row below the password entry
+            const apiKeyHint = new Adw.ActionRow({
+                title: 'Leave empty to use OAuth (codex login) or CODEX_API_KEY from session env',
+                activatable: false,
+                css_classes: ['dim-label'],
+            });
+            group.add(apiKeyHint);
+        }
+
         // Today's usage stats row
-        const cliType   = pathKey.replace('-cli-path', ''); // 'gemini', 'claude', 'copilot'
+        const cliType   = pathKey.replace('-cli-path', ''); // 'gemini', 'claude', 'copilot', 'codex'
         const usageRow  = new Adw.ActionRow({ title: "Today's Usage", activatable: false });
         usageRow.add_prefix(new Gtk.Image({
             icon_name: 'utilities-system-monitor-symbolic',
@@ -423,7 +481,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             try {
                 const usagePath = GLib.build_filenamev([
                     GLib.get_user_data_dir(),
-                    'llm-text-pro@sokolowski.at', 'usage.json',
+                    'llm-text-pro@sokolowski.tech', 'usage.json',
                 ]);
                 const [ok, bytes] = GLib.file_get_contents(usagePath);
                 if (!ok) { usageRow.set_subtitle('No usage data yet'); return; }
@@ -459,6 +517,24 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                             : `${u.totalTokens} tokens`;
                         usageRow.set_subtitle(`${tokStr} · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
                     }
+                } else if (cliType === 'codex') {
+                    const u = data.codex;
+                    if (!u || u.calls === 0) {
+                        usageRow.set_subtitle('No calls yet today');
+                    } else {
+                        usageRow.set_subtitle(`${u.calls} call${u.calls !== 1 ? 's' : ''} today`);
+                    }
+                } else if (cliType === 'opencode') {
+                    const u = data.opencode;
+                    if (!u || u.calls === 0) {
+                        usageRow.set_subtitle('No calls yet today');
+                    } else {
+                        const cost   = u.costUsd >= 0.0001 ? `$${u.costUsd.toFixed(4)}` : '<$0.001';
+                        const tokens = u.inputTokens + u.outputTokens;
+                        const tokStr = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K tokens` : `${tokens} tokens`;
+                        const cache  = u.cacheTokens > 0 ? ` · ${u.cacheTokens} cached` : '';
+                        usageRow.set_subtitle(`${cost} · ${tokStr}${cache} · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
+                    }
                 }
             } catch (_) {
                 usageRow.set_subtitle('No usage data');
@@ -482,6 +558,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             statusIcon.set_from_icon_name(found ? 'emblem-ok-symbolic' : 'dialog-warning-symbolic');
             downloadBtn.set_visible(!found);
             modelRow.set_sensitive(found);
+            if (apiKeyRow) apiKeyRow.set_sensitive(found);
             usageRow.set_sensitive(found);
         };
 
@@ -587,7 +664,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         return row;
     }
 
-    _makeModelEntryWithPresets(title, settings, key, presets) {
+    _makeModelEntryWithPresets(title, settings, key, presets, fetchCommand) {
         const row = new Adw.EntryRow({ title, text: settings.get_string(key) });
         row.connect('notify::text', () => settings.set_string(key, row.get_text()));
 
@@ -615,7 +692,73 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             tooltip_text: 'Choose predefined model'
         });
 
-        row.add_suffix(presetBtn);
+        if (fetchCommand) {
+            const fetchBtn = new Gtk.Button({
+                icon_name: 'view-refresh-symbolic',
+                valign: Gtk.Align.CENTER,
+                tooltip_text: 'Fetch available models dynamically',
+                margin_end: 6
+            });
+
+            fetchBtn.connect('clicked', () => {
+                fetchBtn.set_icon_name('system-run-symbolic');
+                try {
+                    const proc = Gio.Subprocess.new(fetchCommand, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+                    proc.communicate_utf8_async(null, null, (obj, res) => {
+                        try {
+                            const [, out, err] = obj.communicate_utf8_finish(res);
+                            if (proc.get_successful()) {
+                                const models = out.split('\n').map(l => l.trim()).filter(l => l.length > 0 && l.includes('/'));
+                                
+                                let child = listBox.get_first_child();
+                                while (child) {
+                                    const next = child.get_next_sibling();
+                                    listBox.remove(child);
+                                    child = next;
+                                }
+
+                                if (models.length === 0) {
+                                    listBox.append(new Gtk.Label({ label: 'No models found', margin_top: 10, margin_bottom: 10 }));
+                                } else {
+                                    models.forEach(p => {
+                                        const label = new Gtk.Label({ label: p, halign: Gtk.Align.START });
+                                        const btn = new Gtk.Button({ child: label, has_frame: false });
+                                        btn.connect('clicked', () => {
+                                            row.set_text(p);
+                                            popover.popdown();
+                                        });
+                                        listBox.append(btn);
+                                    });
+                                }
+                                fetchBtn.set_icon_name('view-refresh-symbolic');
+                                popover.set_parent(fetchBtn);
+                                popover.popup();
+                            } else {
+                                throw new Error(err || 'Command failed');
+                            }
+                        } catch (e) {
+                            console.warn('[LLM Text Pro] Fetch Models error:', e.message);
+                            fetchBtn.set_icon_name('dialog-error-symbolic');
+                            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                                fetchBtn.set_icon_name('view-refresh-symbolic');
+                                return GLib.SOURCE_REMOVE;
+                            });
+                        }
+                    });
+                } catch (e) {
+                    console.warn('[LLM Text Pro] Fetch Models setup error:', e.message);
+                    fetchBtn.set_icon_name('dialog-error-symbolic');
+                }
+            });
+
+            const box = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL });
+            box.append(fetchBtn);
+            box.append(presetBtn);
+            row.add_suffix(box);
+        } else {
+            row.add_suffix(presetBtn);
+        }
+
         return row;
     }
 
@@ -911,9 +1054,9 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         const backendRow = new Adw.ComboRow({
             title: 'Backend',
             subtitle: 'Override the global backend for this action only',
-            model: new Gtk.StringList({ strings: ['Default (global)', 'Local API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI'] }),
+            model: new Gtk.StringList({ strings: ['Default (global)', 'Local API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI', 'Codex CLI'] }),
         });
-        const bkKeys = ['default', 'local', 'gemini-cli', 'claude-cli', 'copilot-cli'];
+        const bkKeys = ['default', 'local', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli'];
         backendRow.set_selected(Math.max(0, bkKeys.indexOf(action.backend || 'default')));
         settingsGroup.add(backendRow);
 
@@ -1122,6 +1265,39 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             'auto-paste'
         ));
 
+        behavGroup.add(makeSwitchRow(
+            'Enable Auto-Action on Copy',
+            'Automatically trigger the selected action whenever you copy text to the clipboard.',
+            settings,
+            'auto-action-enabled'
+        ));
+
+        const actions = this._parseActions(settings);
+        const enabledActions = actions.filter(a => a.enabled);
+        const actionNames = enabledActions.map(a => a.name);
+        const actionIds = enabledActions.map(a => a.id);
+        
+        const autoActionRow = new Adw.ComboRow({
+            title: 'Auto-Action to Trigger',
+            subtitle: 'Select which action runs automatically on copy',
+            model: new Gtk.StringList({ strings: actionNames.length > 0 ? actionNames : ['No actions enabled'] }),
+        });
+        
+        let currentAutoActionId = settings.get_string('auto-action-id');
+        let selIndex = actionIds.indexOf(currentAutoActionId);
+        if (selIndex === -1 && actionIds.length > 0) {
+            selIndex = 0;
+            settings.set_string('auto-action-id', actionIds[0]);
+        }
+        autoActionRow.set_selected(Math.max(0, selIndex));
+        autoActionRow.set_sensitive(actionNames.length > 0);
+        autoActionRow.connect('notify::selected', () => {
+            if (actionIds.length > 0) {
+                settings.set_string('auto-action-id', actionIds[autoActionRow.get_selected()]);
+            }
+        });
+        behavGroup.add(autoActionRow);
+
         // ── Notifications ──
         const notifGroup = new Adw.PreferencesGroup({
             title: 'Notifications',
@@ -1174,7 +1350,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
     _historyFilePath() {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'llm-text-pro@sokolowski.at', 'history.json',
+            'llm-text-pro@sokolowski.tech', 'history.json',
         ]);
     }
 

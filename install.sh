@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-EXT_UUID="llm-text-pro@sokolowski.at"
-ZIP_NAME="llm-text-pro-updated.zip"
+EXT_UUID="llm-text-pro@sokolowski.tech"
+ZIP_NAME="llm-text-pro@sokolowski.tech-updated.zip"
 
 echo "Compiling schemas..."
 glib-compile-schemas schemas/
@@ -15,9 +15,9 @@ echo "Installing extension..."
 gnome-extensions install --force "$ZIP_NAME"
 
 echo "Reloading extension in GNOME Shell..."
-gnome-extensions disable "$EXT_UUID"
-sleep 1
-gnome-extensions enable "$EXT_UUID"
+gnome-extensions disable "$EXT_UUID" || true
+sleep 1 
+gnome-extensions enable "$EXT_UUID" || true
 
 echo "Cleanup..."
 rm -f "$ZIP_NAME"

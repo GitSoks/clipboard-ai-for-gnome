@@ -92,7 +92,7 @@ class TextProIndicator extends PanelMenu.Button {
         // Spinner label — visible ONLY during processing
         this._iconLabel = new St.Label({
             text: SPINNER_FRAMES[0],
-            style_class: 'llm-text-pro-icon llm-processing',
+            style_class: 'llm-text-pro@sokolowski.tech-icon llm-processing',
             y_align: Clutter.ActorAlign.CENTER,
             visible: false,
         });
@@ -179,6 +179,7 @@ class TextProIndicator extends PanelMenu.Button {
         this._resultPreviewItem.connect('activate', () => {
             if (!this._lastResultFull) return;
             const clipboard = St.Clipboard.get_default();
+            this._ext._ignoreClipboardEvent = true;
             clipboard.set_text(St.ClipboardType.CLIPBOARD, this._lastResultFull);
             Main.notify('LLM Text Pro', 'Result copied to clipboard.');
         });
@@ -230,6 +231,20 @@ class TextProIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // Auto-Action on Copy
+        this._autoActionSwitch = new PopupMenu.PopupSwitchMenuItem('Auto-Action on Copy', false);
+        this._autoActionSwitch.connect('toggled', (_item, state) => {
+            this._ext._settings.set_boolean('auto-action-enabled', state);
+            this._syncAutoActionMenu();
+        });
+        this.menu.addMenuItem(this._autoActionSwitch);
+
+        this._autoActionMenu = new PopupMenu.PopupSubMenuMenuItem('Auto-Action: None');
+        if (this._autoActionMenu.icon) this._autoActionMenu.icon.icon_name = 'media-playlist-repeat-symbolic';
+        this.menu.addMenuItem(this._autoActionMenu);
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
         // Settings
         const settingsItem = new PopupMenu.PopupImageMenuItem('Extension Settings', 'preferences-system-symbolic');
         settingsItem.connect('activate', () => this._ext.openPreferences());
@@ -242,11 +257,49 @@ class TextProIndicator extends PanelMenu.Button {
                 this._rebuildHistory();
                 this._updateStatusInfo();
                 this._updateQuotaDisplay();
+                this._syncAutoActionMenu();
             }
         });
 
         this._updateStatusInfo();
         this._rebuildBackendMenu();
+        this._syncAutoActionMenu();
+    }
+
+    _syncAutoActionMenu() {
+        const enabled = this._ext._settings.get_boolean('auto-action-enabled');
+        this._autoActionSwitch.setToggleState(enabled);
+        this._autoActionMenu.visible = enabled;
+
+        this._autoActionMenu.menu.removeAll();
+        const actions = this._ext._getActions().filter(a => a.enabled);
+        
+        if (actions.length === 0) {
+            const none = new PopupMenu.PopupMenuItem('No actions enabled', { reactive: false });
+            this._autoActionMenu.menu.addMenuItem(none);
+            this._autoActionMenu.label.text = 'Auto-Action: None';
+            return;
+        }
+
+        const currentId = this._ext._settings.get_string('auto-action-id');
+        let currentName = 'None';
+        
+        actions.forEach(action => {
+            const item = new PopupMenu.PopupMenuItem(action.name);
+            if (action.id === currentId) {
+                item.setOrnament(PopupMenu.Ornament.DOT);
+                currentName = action.name;
+            } else {
+                item.setOrnament(PopupMenu.Ornament.NONE);
+            }
+            item.connect('activate', () => {
+                this._ext._settings.set_string('auto-action-id', action.id);
+                this._syncAutoActionMenu();
+            });
+            this._autoActionMenu.menu.addMenuItem(item);
+        });
+
+        this._autoActionMenu.label.text = `Auto-Action: ${currentName}`;
     }
 
     _updateStatusInfo() {
@@ -264,6 +317,12 @@ class TextProIndicator extends PanelMenu.Button {
         } else if (backend === 'copilot-cli') {
             const model = this._ext._settings.get_string('copilot-model');
             info = `Copilot — ${model}`;
+        } else if (backend === 'codex-cli') {
+            const model = this._ext._settings.get_string('codex-model');
+            info = `Codex — ${model}`;
+        } else if (backend === 'opencode-cli') {
+            const model = this._ext._settings.get_string('opencode-model');
+            info = `OpenCode — ${model}`;
         }
 
         // Only update status text when not actively spinning
@@ -282,6 +341,8 @@ class TextProIndicator extends PanelMenu.Button {
             { id: 'gemini-cli',  name: 'Gemini',  cliPath: s.get_string('gemini-cli-path') },
             { id: 'claude-cli',  name: 'Claude',  cliPath: s.get_string('claude-cli-path') },
             { id: 'copilot-cli', name: 'Copilot', cliPath: s.get_string('copilot-cli-path') },
+            { id: 'codex-cli',   name: 'Codex',   cliPath: s.get_string('codex-cli-path') },
+            { id: 'opencode-cli',name: 'OpenCode',cliPath: s.get_string('opencode-cli-path') },
         ];
 
         // Auto-switch to local if the current CLI backend is not installed
@@ -425,6 +486,25 @@ class TextProIndicator extends PanelMenu.Button {
                     : `${u.totalTokens} tok`;
                 const calls = `${u.calls} call${u.calls !== 1 ? 's' : ''}`;
                 this._quotaItem.label.text = `Gemini: ${tokStr} · ${calls} today`;
+            }
+        } else if (backend === 'codex-cli') {
+            const u = usage.codex;
+            if (u.calls === 0) {
+                this._quotaItem.label.text = 'Codex: No usage today';
+            } else {
+                const calls = `${u.calls} call${u.calls !== 1 ? 's' : ''}`;
+                this._quotaItem.label.text = `Codex: ${calls} today`;
+            }
+        } else if (backend === 'opencode-cli') {
+            const u = usage.opencode;
+            if (!u || u.calls === 0) {
+                this._quotaItem.label.text = 'OpenCode: No usage today';
+            } else {
+                const cost = u.costUsd >= 0.0001 ? `$${u.costUsd.toFixed(4)}` : '<$0.001';
+                const tokens = u.inputTokens + u.outputTokens;
+                const tokStr = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K tok` : `${tokens} tok`;
+                const calls  = `${u.calls} call${u.calls !== 1 ? 's' : ''}`;
+                this._quotaItem.label.text = `OpenCode: ${cost} · ${tokStr} · ${calls} today`;
             }
         }
     }
@@ -609,6 +689,7 @@ class TextProIndicator extends PanelMenu.Button {
 
             item.connect('activate', () => {
                 const clipboard = St.Clipboard.get_default();
+                this._ext._ignoreClipboardEvent = true;
                 clipboard.set_text(St.ClipboardType.CLIPBOARD, entry.result);
                 if (this._ext._settings.get_boolean('auto-paste')) {
                     GLib.timeout_add(GLib.PRIORITY_DEFAULT, 80, () => {
@@ -759,6 +840,9 @@ export default class LLMTextProExtension extends Extension {
         this._usage              = null;
         this._isProcessing       = false;
         this._currentActionName  = null;
+        this._actionQueue        = [];
+        this._ignoreClipboardEvent = false;
+        this._clipboardSignalId  = null;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -766,7 +850,7 @@ export default class LLMTextProExtension extends Extension {
     _historyFilePath() {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'llm-text-pro@sokolowski.at', 'history.json',
+            'llm-text-pro@sokolowski.tech', 'history.json',
         ]);
     }
 
@@ -776,7 +860,7 @@ export default class LLMTextProExtension extends Extension {
             // Migrate from old path inside the extension directory (wiped on updates)
             const oldPath = GLib.build_filenamev([
                 GLib.get_user_data_dir(),
-                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'history.json',
+                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.tech', 'history.json',
             ]);
             if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
                  GLib.file_test(oldPath, GLib.FileTest.EXISTS)) {
@@ -811,7 +895,7 @@ export default class LLMTextProExtension extends Extension {
     _usageFilePath() {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'llm-text-pro@sokolowski.at', 'usage.json',
+            'llm-text-pro@sokolowski.tech', 'usage.json',
         ]);
     }
 
@@ -821,6 +905,8 @@ export default class LLMTextProExtension extends Extension {
             claude:  { calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheTokens: 0 },
             copilot: { calls: 0, premiumRequests: 0 },
             gemini:  { calls: 0, totalTokens: 0, inputTokens: 0 },
+            codex:   { calls: 0 },
+            opencode:{ calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheTokens: 0 },
         };
     }
 
@@ -830,7 +916,7 @@ export default class LLMTextProExtension extends Extension {
             // Migrate from old path inside the extension directory (wiped on updates)
             const oldPath = GLib.build_filenamev([
                 GLib.get_user_data_dir(),
-                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.at', 'usage.json',
+                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.tech', 'usage.json',
             ]);
             if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
                  GLib.file_test(oldPath, GLib.FileTest.EXISTS)) {
@@ -887,6 +973,16 @@ export default class LLMTextProExtension extends Extension {
             u.calls++;
             u.totalTokens += result.usage.totalTokens || 0;
             u.inputTokens += result.usage.inputTokens || 0;
+        } else if (backend === 'codex-cli') {
+            this._usage.codex.calls++;
+        } else if (backend === 'opencode-cli') {
+            const u = this._usage.opencode || { calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, cacheTokens: 0 };
+            this._usage.opencode = u;
+            u.calls++;
+            u.costUsd      += result.usage.costUsd      || 0;
+            u.inputTokens  += result.usage.inputTokens  || 0;
+            u.outputTokens += result.usage.outputTokens || 0;
+            u.cacheTokens  += result.usage.cacheTokens  || 0;
         }
 
         this._saveUsage(this._usage);
@@ -907,6 +1003,7 @@ export default class LLMTextProExtension extends Extension {
         );
 
         this._bindAllHotkeys();
+        this._setupClipboardListener();
 
         this._settingsSignalId = this._settings.connect(
             'changed::actions-json',
@@ -929,6 +1026,7 @@ export default class LLMTextProExtension extends Extension {
         }
 
         this._unbindAllHotkeys();
+        this._teardownClipboardListener();
 
         this._indicator?.destroy();
         this._indicator = null;
@@ -1003,11 +1101,55 @@ export default class LLMTextProExtension extends Extension {
         }
     }
 
+    // ── Clipboard auto-action ────────────────────────────────────────────────
+
+    _setupClipboardListener() {
+        const selection = Meta.get_display().get_selection();
+        this._clipboardSignalId = selection.connect('owner-changed', (sel, selectionType, source) => {
+            if (selectionType === Meta.SelectionType.CLIPBOARD) {
+                this._onClipboardChanged();
+            }
+        });
+    }
+
+    _teardownClipboardListener() {
+        if (this._clipboardSignalId) {
+            Meta.get_display().get_selection().disconnect(this._clipboardSignalId);
+            this._clipboardSignalId = null;
+        }
+    }
+
+    _onClipboardChanged() {
+        if (this._ignoreClipboardEvent) {
+            this._ignoreClipboardEvent = false;
+            return;
+        }
+
+        if (!this._settings.get_boolean('auto-action-enabled')) return;
+
+        const actionId = this._settings.get_string('auto-action-id');
+        if (!actionId) return;
+
+        const action = this._getActions().find(a => a.id === actionId);
+        if (action && action.enabled) {
+            // Delay to ensure the clipboard is fully populated before reading
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                this._processClipboard(action);
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+    }
+
     // ── Clipboard processing ─────────────────────────────────────────────────
 
     async _processClipboard(action) {
         if (this._isProcessing) {
-            Main.notify('LLM Text Pro', `Still running "${this._currentActionName || 'an action'}" — please wait…`);
+            if (this._actionQueue.length < 5) {
+                this._actionQueue.push(action);
+                Main.notify('LLM Text Pro', `Queued "${action.name}" (Queue size: ${this._actionQueue.length}/5)`);
+            } else {
+                Main.notify('LLM Text Pro', `Queue is full (max 5). Dropped "${action.name}".`);
+            }
             return;
         }
         this._isProcessing      = true;
@@ -1049,6 +1191,7 @@ export default class LLMTextProExtension extends Extension {
 
             if (!resultText) throw new Error('Backend returned an empty result.');
 
+            this._ignoreClipboardEvent = true;
             clipboard.set_text(St.ClipboardType.CLIPBOARD, resultText);
 
             if (this._settings.get_boolean('auto-paste')) {
@@ -1103,6 +1246,14 @@ export default class LLMTextProExtension extends Extension {
         } finally {
             this._isProcessing      = false;
             this._currentActionName = null;
+
+            if (this._actionQueue.length > 0) {
+                const nextAction = this._actionQueue.shift();
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                    this._processClipboard(nextAction);
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
         }
     }
 
@@ -1116,6 +1267,10 @@ export default class LLMTextProExtension extends Extension {
                 return this._callCLI('claude', prompt, text);
             case 'copilot-cli':
                 return this._callCLI('copilot', prompt, text);
+            case 'codex-cli':
+                return this._callCLI('codex', prompt, text);
+            case 'opencode-cli':
+                return this._callCLI('opencode', prompt, text);
             case 'local':
             default:
                 return this._callLocalAPI(prompt, text);
@@ -1266,11 +1421,12 @@ export default class LLMTextProExtension extends Extension {
         return false;
     }
 
-    // ── CLI backends (Gemini / Claude / Copilot) ─────────────────────────────
+    // ── CLI backends (Gemini / Claude / Copilot / Codex) ────────────────────
 
     async _callCLI(cliType, prompt, text) {
         let cliPath, args;
         const fullInput = `${prompt}\n\n${text}`;
+        let codexModelLabel = 'Codex Default';
 
         if (cliType === 'gemini') {
             cliPath = this._settings.get_string('gemini-cli-path');
@@ -1296,13 +1452,40 @@ export default class LLMTextProExtension extends Extension {
                 args.push('--model', model);
             }
             args.push('--output-format', 'json');
+        } else if (cliType === 'codex') {
+            // codex exec --skip-git-repo-check --ephemeral --full-auto [-m MODEL] "PROMPT"
+            // Output: plain text to stdout (no --output-format flag supported)
+            // Auth:   CODEX_API_KEY env var; falls back to OAuth session if not set
+            cliPath = this._settings.get_string('codex-cli-path');
+            const model = this._settings.get_string('codex-model');
+            args = [cliPath, 'exec', '--skip-git-repo-check', '--ephemeral', '--full-auto'];
+            if (model && model.trim() !== '' && model.toLowerCase() !== 'default (auto)') {
+                args.push('--model', model);
+                codexModelLabel = model;
+            }
+            args.push(fullInput);
+        } else if (cliType === 'opencode') {
+            cliPath = this._settings.get_string('opencode-cli-path');
+            const model = this._settings.get_string('opencode-model');
+            args = [cliPath, 'run', fullInput, '--format', 'json'];
+            if (model && model.trim() !== '' && model.toLowerCase() !== 'default (auto)') {
+                args.push('--model', model);
+            }
         }
 
-        const proc = new Gio.Subprocess({
-            argv: args,
-            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
-        });
-        proc.init(null);
+        const subFlags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE;
+        let proc;
+        if (cliType === 'codex') {
+            // SubprocessLauncher lets us inject CODEX_API_KEY without mutating the process env
+            const launcher = new Gio.SubprocessLauncher({ flags: subFlags });
+            const apiKey = this._settings.get_string('codex-api-key');
+            if (apiKey && apiKey.trim() !== '')
+                launcher.setenv('CODEX_API_KEY', apiKey.trim(), true);
+            proc = launcher.spawnv(args, null);
+        } else {
+            proc = new Gio.Subprocess({ argv: args, flags: subFlags });
+            proc.init(null);
+        }
 
         return new Promise((resolve, reject) => {
             proc.communicate_utf8_async(null, null, (p, res) => {
@@ -1330,6 +1513,52 @@ export default class LLMTextProExtension extends Extension {
                                 isJsonl = true;
                             }
                         }
+                    }
+
+                    // Codex outputs plain text — handle before JSON branches
+                    if (cliType === 'codex') {
+                        if (exit !== 0) {
+                            reject(new Error(err || out || `codex exited with code ${exit}`));
+                        } else if (!out) {
+                            reject(new Error(err ? `codex stderr: ${err}` : 'codex returned empty output.'));
+                        } else {
+                            resolve({ text: out, info: `Model: ${codexModelLabel}`, usage: {} });
+                        }
+                        return;
+                    }
+
+                    if (cliType === 'opencode') {
+                        if (exit !== 0) {
+                            reject(new Error(err || out || `opencode exited with code ${exit}`));
+                            return;
+                        }
+                        let textResult = '';
+                        let usageData = { inputTokens: 0, outputTokens: 0, costUsd: 0, cacheTokens: 0 };
+                        if (out) {
+                            const lines = out.split('\n');
+                            for (const line of lines) {
+                                if (!line.trim()) continue;
+                                try {
+                                    const j = JSON.parse(line);
+                                    if (j.type === 'text' && j.part && j.part.text) {
+                                        textResult += j.part.text;
+                                    } else if (j.type === 'step_finish' && j.part) {
+                                        if (j.part.tokens) {
+                                            usageData.inputTokens = j.part.tokens.input || 0;
+                                            usageData.outputTokens = j.part.tokens.output || 0;
+                                            if (j.part.tokens.cache) {
+                                                usageData.cacheTokens = (j.part.tokens.cache.read || 0) + (j.part.tokens.cache.write || 0);
+                                            }
+                                        }
+                                        if (j.part.cost) {
+                                            usageData.costUsd = j.part.cost;
+                                        }
+                                    }
+                                } catch (_e) {}
+                            }
+                        }
+                        resolve({ text: textResult.trim(), info: `Model: ${this._settings.get_string('opencode-model') || 'OpenCode Default'}`, usage: usageData });
+                        return;
                     }
 
                     if (exit !== 0) {

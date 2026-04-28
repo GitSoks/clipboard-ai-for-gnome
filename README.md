@@ -34,18 +34,18 @@ Depending on which backend you want to use, you will need the corresponding tool
 
 1. Clone this repository into your GNOME extensions directory:
    ```bash
-   git clone https://git.sokolowski.tech/david/llm-text-pro.git ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.at
+   git clone https://git.sokolowski.tech/david/llm-text-pro@sokolowski.tech.git ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech
    ```
 2. Compile the settings schema:
    ```bash
-   glib-compile-schemas ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.at/schemas/
+   glib-compile-schemas ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech/schemas/
    ```
 3. Restart GNOME Shell:
    - **X11:** Press `Alt+F2`, type `r`, and press `Enter`.
    - **Wayland:** Log out and log back into your session.
 4. Enable the extension via the **Extensions** app or terminal:
    ```bash
-   gnome-extensions enable llm-text-pro@sokolowski.at
+   gnome-extensions enable llm-text-pro@sokolowski.tech
    ```
 
 ## Configuration
