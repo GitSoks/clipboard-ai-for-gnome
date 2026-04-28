@@ -10,6 +10,7 @@ import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Gio from 'gi://Gio';
 import Soup from 'gi://Soup';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -402,20 +403,16 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             modelKey: 'opencode-model',
             presets: [
                 'Default (Auto)',
-                'anthropic/claude-3.5-sonnet',
-                'openai/gpt-4o',
-                'google/gemini-2.5-pro',
-                'deepseek/deepseek-chat',
-                'xai/grok-2',
             ],
             downloadUrl: 'https://opencode.ai',
             fetchCommand: ['opencode', 'models'],
+            autoFetchModels: true,
         });
 
         return page;
     }
 
-    _makeCliGroup(page, settings, { title, description, pathKey, modelTitle, modelKey, presets, downloadUrl, apiKeyKey, apiKeyTitle, fetchCommand }) {
+    _makeCliGroup(page, settings, { title, description, pathKey, modelTitle, modelKey, presets, downloadUrl, apiKeyKey, apiKeyTitle, fetchCommand, autoFetchModels }) {
         const group = new Adw.PreferencesGroup({ title, description });
         page.add(group);
 
@@ -442,7 +439,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         group.add(pathRow);
 
         // Model entry — grayed out when CLI is not found
-        const modelRow = this._makeModelEntryWithPresets(modelTitle, settings, modelKey, presets, fetchCommand);
+        const modelRow = this._makeModelEntryWithPresets(modelTitle, settings, modelKey, presets, fetchCommand, pathKey, autoFetchModels);
         group.add(modelRow);
 
         // Optional API key entry (Codex only)
@@ -664,7 +661,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         return row;
     }
 
-    _makeModelEntryWithPresets(title, settings, key, presets, fetchCommand) {
+    _makeModelEntryWithPresets(title, settings, key, presets, fetchCommand, pathKey, autoFetchModels) {
         const row = new Adw.EntryRow({ title, text: settings.get_string(key) });
         row.connect('notify::text', () => settings.set_string(key, row.get_text()));
 
@@ -675,15 +672,24 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         scroll.set_child(listBox);
         popover.set_child(scroll);
 
-        presets.forEach(p => {
-            const label = new Gtk.Label({ label: p, halign: Gtk.Align.START });
-            const btn = new Gtk.Button({ child: label, has_frame: false });
-            btn.connect('clicked', () => {
-                row.set_text(p);
-                popover.popdown();
+        const populatePresets = () => {
+            let child = listBox.get_first_child();
+            while (child) {
+                const next = child.get_next_sibling();
+                listBox.remove(child);
+                child = next;
+            }
+            presets.forEach(p => {
+                const label = new Gtk.Label({ label: p, halign: Gtk.Align.START });
+                const btn = new Gtk.Button({ child: label, has_frame: false });
+                btn.connect('clicked', () => {
+                    row.set_text(p);
+                    popover.popdown();
+                });
+                listBox.append(btn);
             });
-            listBox.append(btn);
-        });
+        };
+        populatePresets();
 
         const presetBtn = new Gtk.MenuButton({
             icon_name: 'pan-down-symbolic',
@@ -691,6 +697,90 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             popover: popover,
             tooltip_text: 'Choose predefined model'
         });
+
+        // Helper: fetch models from CLI and populate the popover list
+        const doFetchModels = (fetchBtn, showPopover) => {
+            if (fetchBtn) fetchBtn.set_icon_name('system-run-symbolic');
+            try {
+                let cmd = fetchCommand;
+                if (pathKey) {
+                    const customPath = settings.get_string(pathKey);
+                    if (customPath && customPath.trim() !== '') {
+                        cmd = [customPath, ...fetchCommand.slice(1)];
+                    }
+                }
+                const proc = Gio.Subprocess.new(cmd, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+                proc.communicate_utf8_async(null, null, (obj, res) => {
+                    try {
+                        const [, out, err] = obj.communicate_utf8_finish(res);
+                        if (proc.get_successful()) {
+                            const models = out.split('\n').map(l => l.trim()).filter(l => l.length > 0 && l.includes('/'));
+
+                            let child = listBox.get_first_child();
+                            while (child) {
+                                const next = child.get_next_sibling();
+                                listBox.remove(child);
+                                child = next;
+                            }
+
+                            // Always add presets first (e.g. "Default (Auto)")
+                            presets.forEach(p => {
+                                const label = new Gtk.Label({ label: p, halign: Gtk.Align.START });
+                                const btn = new Gtk.Button({ child: label, has_frame: false });
+                                btn.connect('clicked', () => {
+                                    row.set_text(p);
+                                    popover.popdown();
+                                });
+                                listBox.append(btn);
+                            });
+
+                            if (models.length > 0) {
+                                // Add separator label
+                                const sep = new Gtk.Label({
+                                    label: '── Available Models ──',
+                                    halign: Gtk.Align.CENTER,
+                                    margin_top: 4,
+                                    margin_bottom: 2,
+                                    css_classes: ['dim-label'],
+                                });
+                                listBox.append(sep);
+
+                                models.forEach(m => {
+                                    const label = new Gtk.Label({ label: m, halign: Gtk.Align.START });
+                                    const btn = new Gtk.Button({ child: label, has_frame: false });
+                                    btn.connect('clicked', () => {
+                                        row.set_text(m);
+                                        popover.popdown();
+                                    });
+                                    listBox.append(btn);
+                                });
+                            } else if (presets.length <= 1) {
+                                listBox.append(new Gtk.Label({ label: 'No models found', margin_top: 10, margin_bottom: 10 }));
+                            }
+                            if (fetchBtn) fetchBtn.set_icon_name('view-refresh-symbolic');
+                            if (showPopover) {
+                                popover.set_parent(fetchBtn || presetBtn);
+                                popover.popup();
+                            }
+                        } else {
+                            throw new Error(err || 'Command failed');
+                        }
+                    } catch (e) {
+                        console.warn('[LLM Text Pro] Fetch Models error:', e.message);
+                        if (fetchBtn) {
+                            fetchBtn.set_icon_name('dialog-error-symbolic');
+                            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                                fetchBtn.set_icon_name('view-refresh-symbolic');
+                                return GLib.SOURCE_REMOVE;
+                            });
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('[LLM Text Pro] Fetch Models setup error:', e.message);
+                if (fetchBtn) fetchBtn.set_icon_name('dialog-error-symbolic');
+            }
+        };
 
         if (fetchCommand) {
             const fetchBtn = new Gtk.Button({
@@ -700,61 +790,24 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 margin_end: 6
             });
 
-            fetchBtn.connect('clicked', () => {
-                fetchBtn.set_icon_name('system-run-symbolic');
-                try {
-                    const proc = Gio.Subprocess.new(fetchCommand, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
-                    proc.communicate_utf8_async(null, null, (obj, res) => {
-                        try {
-                            const [, out, err] = obj.communicate_utf8_finish(res);
-                            if (proc.get_successful()) {
-                                const models = out.split('\n').map(l => l.trim()).filter(l => l.length > 0 && l.includes('/'));
-                                
-                                let child = listBox.get_first_child();
-                                while (child) {
-                                    const next = child.get_next_sibling();
-                                    listBox.remove(child);
-                                    child = next;
-                                }
-
-                                if (models.length === 0) {
-                                    listBox.append(new Gtk.Label({ label: 'No models found', margin_top: 10, margin_bottom: 10 }));
-                                } else {
-                                    models.forEach(p => {
-                                        const label = new Gtk.Label({ label: p, halign: Gtk.Align.START });
-                                        const btn = new Gtk.Button({ child: label, has_frame: false });
-                                        btn.connect('clicked', () => {
-                                            row.set_text(p);
-                                            popover.popdown();
-                                        });
-                                        listBox.append(btn);
-                                    });
-                                }
-                                fetchBtn.set_icon_name('view-refresh-symbolic');
-                                popover.set_parent(fetchBtn);
-                                popover.popup();
-                            } else {
-                                throw new Error(err || 'Command failed');
-                            }
-                        } catch (e) {
-                            console.warn('[LLM Text Pro] Fetch Models error:', e.message);
-                            fetchBtn.set_icon_name('dialog-error-symbolic');
-                            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
-                                fetchBtn.set_icon_name('view-refresh-symbolic');
-                                return GLib.SOURCE_REMOVE;
-                            });
-                        }
-                    });
-                } catch (e) {
-                    console.warn('[LLM Text Pro] Fetch Models setup error:', e.message);
-                    fetchBtn.set_icon_name('dialog-error-symbolic');
-                }
-            });
+            fetchBtn.connect('clicked', () => doFetchModels(fetchBtn, true));
 
             const box = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL });
             box.append(fetchBtn);
             box.append(presetBtn);
             row.add_suffix(box);
+
+            // Auto-fetch models on init if configured and CLI is installed
+            if (autoFetchModels && pathKey) {
+                const path = settings.get_string(pathKey);
+                if (isCliInstalled(path)) {
+                    // Delay slightly so the UI is fully assembled first
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+                        doFetchModels(fetchBtn, false);
+                        return GLib.SOURCE_REMOVE;
+                    });
+                }
+            }
         } else {
             row.add_suffix(presetBtn);
         }

@@ -100,6 +100,9 @@ class TextProIndicator extends PanelMenu.Button {
 
         this.add_child(box);
 
+        // Set a wider minimum width for the popup menu
+        this.menu.box.style = 'min-width: 400px;';
+
         this._animTimer = null;
         this._resetTimer = null;
         this._quotaTimer = null;
@@ -179,7 +182,7 @@ class TextProIndicator extends PanelMenu.Button {
         this._resultPreviewItem.connect('activate', () => {
             if (!this._lastResultFull) return;
             const clipboard = St.Clipboard.get_default();
-            this._ext._ignoreClipboardEvent = true;
+            this._ext._suppressClipboardAutoAction();
             clipboard.set_text(St.ClipboardType.CLIPBOARD, this._lastResultFull);
             Main.notify('LLM Text Pro', 'Result copied to clipboard.');
         });
@@ -187,10 +190,10 @@ class TextProIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Backend switcher
+        // Backend switcher — grid-style layout
         this._backendBoxItem = new PopupMenu.PopupBaseMenuItem({ reactive: false });
 
-        const backendContainerOuter = new St.BoxLayout({ vertical: false, x_expand: true });
+        const backendContainerOuter = new St.BoxLayout({ vertical: true, x_expand: true });
 
         const backendLabel = new St.Label({
             text: 'Backend',
@@ -201,9 +204,11 @@ class TextProIndicator extends PanelMenu.Button {
         backendContainerOuter.add_child(backendLabel);
 
         this._backendSwitchBox = new St.BoxLayout({
-            vertical: false,
+            vertical: true,
+            x_expand: true,
             style_class: 'llm-backend-switch-container',
         });
+
         backendContainerOuter.add_child(this._backendSwitchBox);
 
         this._backendBoxItem.add_child(backendContainerOuter);
@@ -352,9 +357,21 @@ class TextProIndicator extends PanelMenu.Button {
             current = 'local';
         }
 
-        backends.forEach(b => {
-            // Skip CLI backends that are not installed
-            if (b.cliPath !== null && !cliIsInstalled(b.cliPath)) return;
+        // Filter to only installed backends
+        const available = backends.filter(b => b.cliPath === null || cliIsInstalled(b.cliPath));
+
+        // Build rows of 3 buttons each
+        const COLS = 3;
+        let row = null;
+        available.forEach((b, i) => {
+            if (i % COLS === 0) {
+                row = new St.BoxLayout({
+                    vertical: false,
+                    x_expand: true,
+                    style_class: 'llm-backend-row',
+                });
+                this._backendSwitchBox.add_child(row);
+            }
 
             const btn = new St.Button({
                 label: b.name,
@@ -363,7 +380,8 @@ class TextProIndicator extends PanelMenu.Button {
                     : 'llm-backend-btn',
                 can_focus: true,
                 reactive: true,
-                x_align: Clutter.ActorAlign.CENTER,
+                x_expand: true,
+                x_align: Clutter.ActorAlign.FILL,
                 y_align: Clutter.ActorAlign.CENTER,
             });
             btn.connect('clicked', () => {
@@ -372,7 +390,7 @@ class TextProIndicator extends PanelMenu.Button {
                 this._updateStatusInfo();
                 this._checkQuota(true);
             });
-            this._backendSwitchBox.add_child(btn);
+            row.add_child(btn);
         });
     }
 
@@ -689,7 +707,7 @@ class TextProIndicator extends PanelMenu.Button {
 
             item.connect('activate', () => {
                 const clipboard = St.Clipboard.get_default();
-                this._ext._ignoreClipboardEvent = true;
+                this._ext._suppressClipboardAutoAction();
                 clipboard.set_text(St.ClipboardType.CLIPBOARD, entry.result);
                 if (this._ext._settings.get_boolean('auto-paste')) {
                     GLib.timeout_add(GLib.PRIORITY_DEFAULT, 80, () => {
@@ -841,7 +859,7 @@ export default class LLMTextProExtension extends Extension {
         this._isProcessing       = false;
         this._currentActionName  = null;
         this._actionQueue        = [];
-        this._ignoreClipboardEvent = false;
+
         this._clipboardSignalId  = null;
     }
 
@@ -1104,40 +1122,64 @@ export default class LLMTextProExtension extends Extension {
     // ── Clipboard auto-action ────────────────────────────────────────────────
 
     _setupClipboardListener() {
-        const selection = Meta.get_display().get_selection();
-        this._clipboardSignalId = selection.connect('owner-changed', (sel, selectionType, source) => {
-            if (selectionType === Meta.SelectionType.CLIPBOARD) {
-                this._onClipboardChanged();
-            }
+        this._clipboardIgnoreUntil = 0;
+        this._clipboardDebounceTimer = null;
+        const selection = global.display.get_selection();
+        this._clipboardSignalId = selection.connect('owner-changed', (sel, selectionType, _source) => {
+            if (selectionType !== Meta.SelectionType.CLIPBOARD) return;
+
+            // Ignore clipboard changes that originated from this extension
+            // Use a time-based cooldown (1500ms) rather than a boolean flag to
+            // handle the case where owner-changed fires multiple times per copy
+            if (Date.now() < this._clipboardIgnoreUntil) return;
+
+            this._onClipboardChanged();
         });
     }
 
     _teardownClipboardListener() {
         if (this._clipboardSignalId) {
-            Meta.get_display().get_selection().disconnect(this._clipboardSignalId);
+            global.display.get_selection().disconnect(this._clipboardSignalId);
             this._clipboardSignalId = null;
+        }
+        if (this._clipboardDebounceTimer) {
+            GLib.source_remove(this._clipboardDebounceTimer);
+            this._clipboardDebounceTimer = null;
         }
     }
 
-    _onClipboardChanged() {
-        if (this._ignoreClipboardEvent) {
-            this._ignoreClipboardEvent = false;
-            return;
-        }
+    /**
+     * Mark clipboard events as originating from us — suppress auto-action
+     * for the next 1500ms. Call this before any clipboard.set_text().
+     */
+    _suppressClipboardAutoAction() {
+        this._clipboardIgnoreUntil = Date.now() + 1500;
+    }
 
+    _onClipboardChanged() {
         if (!this._settings.get_boolean('auto-action-enabled')) return;
+        if (this._isProcessing) return;
 
         const actionId = this._settings.get_string('auto-action-id');
-        if (!actionId) return;
+        if (!actionId || actionId === '') return;
 
         const action = this._getActions().find(a => a.id === actionId);
-        if (action && action.enabled) {
-            // Delay to ensure the clipboard is fully populated before reading
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
-                this._processClipboard(action);
-                return GLib.SOURCE_REMOVE;
-            });
+        if (!action || !action.enabled) return;
+
+        // Debounce: some apps fire multiple clipboard events for one copy
+        if (this._clipboardDebounceTimer) {
+            GLib.source_remove(this._clipboardDebounceTimer);
+            this._clipboardDebounceTimer = null;
         }
+
+        this._clipboardDebounceTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            this._clipboardDebounceTimer = null;
+            // Double-check state hasn't changed during debounce
+            if (!this._isProcessing && this._settings.get_boolean('auto-action-enabled')) {
+                this._processClipboard(action);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     // ── Clipboard processing ─────────────────────────────────────────────────
@@ -1191,7 +1233,7 @@ export default class LLMTextProExtension extends Extension {
 
             if (!resultText) throw new Error('Backend returned an empty result.');
 
-            this._ignoreClipboardEvent = true;
+            this._suppressClipboardAutoAction();
             clipboard.set_text(St.ClipboardType.CLIPBOARD, resultText);
 
             if (this._settings.get_boolean('auto-paste')) {
