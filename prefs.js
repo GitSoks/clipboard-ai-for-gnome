@@ -153,268 +153,331 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             icon_name: 'applications-science-symbolic',
         });
 
-        // ── Active backend chooser ──
         const backendGroup = new Adw.PreferencesGroup({
             title: 'Active AI Backend',
-            description: 'The global default for all actions. Each individual action can override this in the Actions editor.',
+            description: 'Click a row to activate. Use ⚙ to configure.',
         });
         page.add(backendGroup);
 
-        const backendRow = new Adw.ComboRow({
-            title: 'Default Backend',
-            subtitle: 'Used for any action whose backend is set to "Default"',
-            model: new Gtk.StringList({ strings: ['Local API (Ollama / LM Studio)', 'Gemini CLI', 'Claude CLI', 'Copilot CLI', 'Codex CLI', 'OpenCode CLI'] }),
-        });
-        const backendKeys = ['local', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli', 'opencode-cli'];
-        const currentBackend = settings.get_string('backend');
-        backendRow.set_selected(Math.max(0, backendKeys.indexOf(currentBackend)));
-        backendRow.connect('notify::selected', () => {
-            settings.set_string('backend', backendKeys[backendRow.get_selected()]);
-        });
-        backendGroup.add(backendRow);
+        const BACKENDS = [
+            {
+                id: 'local', label: 'Local API', subtitle: 'Ollama / LM Studio',
+                icon: 'computer-symbolic', cliPathKey: null,
+                downloadUrl: 'https://ollama.com',
+                isEnabled: () => settings.get_boolean('local-api-enabled'),
+            },
+            {
+                id: 'online-api', label: 'Online API', subtitle: 'OpenRouter / OpenAI-compatible',
+                icon: 'network-transmit-receive-symbolic', cliPathKey: null,
+                downloadUrl: 'https://openrouter.ai',
+                isEnabled: () => settings.get_string('online-api-key').trim() !== '',
+            },
+            {
+                id: 'gemini-cli', label: 'Gemini CLI', subtitle: 'Google Gemini',
+                icon: 'applications-science-symbolic', cliPathKey: 'gemini-cli-path',
+                downloadUrl: 'https://github.com/google-gemini/gemini-cli',
+                cliOpts: {
+                    title: 'Gemini CLI', description: 'Google Gemini CLI configuration.',
+                    pathKey: 'gemini-cli-path', modelTitle: 'Gemini Model', modelKey: 'gemini-model',
+                    presets: ['Default (Auto)','auto','pro','flash','flash-lite',
+                        'gemini-3-pro-preview','gemini-3-flash-preview','gemini-3.1-pro-preview','gemini-3.1-flash-lite-preview',
+                        'gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite',
+                        'gemini-2.0-flash','gemini-1.5-pro','gemini-1.5-flash'],
+                    downloadUrl: 'https://github.com/google-gemini/gemini-cli',
+                },
+            },
+            {
+                id: 'claude-cli', label: 'Claude CLI', subtitle: 'Anthropic Claude Code',
+                icon: 'utilities-terminal-symbolic', cliPathKey: 'claude-cli-path',
+                downloadUrl: 'https://claude.ai/code',
+                cliOpts: {
+                    title: 'Claude CLI', description: 'Claude Code CLI configuration.',
+                    pathKey: 'claude-cli-path', modelTitle: 'Claude Model', modelKey: 'claude-model',
+                    presets: ['Default (Auto)','opus','sonnet','haiku','best',
+                        'claude-opus-4-7','claude-sonnet-4-6','claude-haiku-4-5',
+                        'claude-opus-4-6','claude-opus-4-5','claude-sonnet-4-5',
+                        'claude-3-7-sonnet-20250219','claude-3-5-sonnet-20241022','claude-3-5-haiku-20241022','claude-3-opus-20240229'],
+                    downloadUrl: 'https://claude.ai/code',
+                },
+            },
+            {
+                id: 'copilot-cli', label: 'Copilot CLI', subtitle: 'GitHub Copilot',
+                icon: 'system-users-symbolic', cliPathKey: 'copilot-cli-path',
+                downloadUrl: 'https://github.com/github/copilot-cli',
+                cliOpts: {
+                    title: 'Copilot CLI', description: 'GitHub Copilot CLI configuration.',
+                    pathKey: 'copilot-cli-path', modelTitle: 'Copilot Model', modelKey: 'copilot-model',
+                    presets: ['Default (Auto)','auto',
+                        'claude-sonnet-4.6','claude-sonnet-4.5','claude-haiku-4.5',
+                        'claude-opus-4.7','claude-opus-4.6','claude-opus-4.6-fast','claude-opus-4.5',
+                        'gpt-5.4','gpt-5.4-mini','gpt-5-mini','gpt-4.1'],
+                    downloadUrl: 'https://github.com/github/copilot-cli',
+                },
+            },
+            {
+                id: 'codex-cli', label: 'Codex CLI', subtitle: 'OpenAI Codex',
+                icon: 'accessories-text-editor-symbolic', cliPathKey: 'codex-cli-path',
+                downloadUrl: 'https://developers.openai.com/codex/cli',
+                cliOpts: {
+                    title: 'Codex CLI', description: 'OpenAI Codex CLI configuration.',
+                    pathKey: 'codex-cli-path', modelTitle: 'Codex Model', modelKey: 'codex-model',
+                    apiKeyKey: 'codex-api-key', apiKeyTitle: 'API Key (CODEX_API_KEY)',
+                    presets: ['Default (Auto)','gpt-5.5','gpt-5.4','gpt-5.4-mini','gpt-5.3-codex','gpt-5.3-codex-spark','gpt-5.2'],
+                    downloadUrl: 'https://developers.openai.com/codex/cli',
+                },
+            },
+            {
+                id: 'opencode-cli', label: 'OpenCode CLI', subtitle: 'OpenCode AI',
+                icon: 'network-server-symbolic', cliPathKey: 'opencode-cli-path',
+                downloadUrl: 'https://opencode.ai',
+                cliOpts: {
+                    title: 'OpenCode CLI', description: 'OpenCode CLI configuration.',
+                    pathKey: 'opencode-cli-path', modelTitle: 'OpenCode Model', modelKey: 'opencode-model',
+                    presets: ['Default (Auto)'],
+                    downloadUrl: 'https://opencode.ai',
+                    fetchCommand: ['opencode','models'], autoFetchModels: true,
+                },
+            },
+        ];
 
-        // ── Local API ──
-        const localGroup = new Adw.PreferencesGroup({
-            title: 'Local API',
-            description: 'Connect to Ollama, LM Studio, or any OpenAI-compatible endpoint running on your machine.',
-        });
-        page.add(localGroup);
-        localGroup.add(makeEntry('API Endpoint', settings, 'api-endpoint'));
-        localGroup.add(this._makeLocalModelEntry(settings));
-        localGroup.add(makePasswordEntry('API Key', settings, 'api-key'));
+        const cardMap = new Map();
 
-        // ── Connection test row ──
-        const connRow = new Adw.ActionRow({
-            title: 'Connection Status',
-            subtitle: 'Not tested — click Test to check the endpoint',
+        const refreshCards = () => {
+            const current = settings.get_string('backend');
+            for (const [id, row] of cardMap) {
+                const active = id === current;
+                row._checkIcon?.set_visible(active);
+                row._activeLabel?.set_visible(active);
+                if (active) row.add_css_class('backend-card-active');
+                else        row.remove_css_class('backend-card-active');
+            }
+        };
+
+        BACKENDS.forEach(b => {
+            let installed;
+            if (b.cliPathKey !== null) {
+                installed = isCliInstalled(settings.get_string(b.cliPathKey));
+            } else {
+                installed = !b.isEnabled || b.isEnabled();
+            }
+            const isActive = settings.get_string('backend') === b.id;
+
+            const subtitleText = installed ? b.subtitle
+                : (b.id === 'online-api' ? 'Enter API key to enable' : `${b.subtitle} — disabled`);
+
+            const row = new Adw.ActionRow({
+                title: b.label,
+                subtitle: subtitleText,
+                activatable: installed,
+            });
+
+            row.add_prefix(new Gtk.Image({
+                icon_name: b.icon, pixel_size: 28,
+                valign: Gtk.Align.CENTER,
+                css_classes: installed ? ['accent'] : ['dim-label'],
+                margin_end: 4,
+            }));
+
+            const activeLabel = new Gtk.Label({
+                label: '✓ Active', css_classes: ['caption', 'accent'],
+                valign: Gtk.Align.CENTER, visible: isActive, margin_end: 6,
+            });
+            row._activeLabel = activeLabel;
+            row.add_suffix(activeLabel);
+
+            const checkIcon = new Gtk.Image({
+                icon_name: 'object-select-symbolic', pixel_size: 18,
+                valign: Gtk.Align.CENTER, visible: isActive,
+                css_classes: ['accent'], margin_end: 4,
+            });
+            row._checkIcon = checkIcon;
+            row.add_suffix(checkIcon);
+
+            if (isActive) row.add_css_class('backend-card-active');
+
+            // Always show settings gear for non-CLI backends (even if not yet enabled)
+            // For CLI backends: show gear if installed, download if not
+            const showSettings = (b.cliPathKey === null) || installed;
+            if (showSettings) {
+                const settingsBtn = new Gtk.Button({
+                    icon_name: 'emblem-system-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    css_classes: ['flat', 'circular'],
+                    tooltip_text: `Configure ${b.label}`,
+                });
+                settingsBtn.connect('clicked', () => this._openBackendDialog(settings, b));
+                row.add_suffix(settingsBtn);
+            } else {
+                const dlBtn = new Gtk.Button({
+                    icon_name: 'folder-download-symbolic',
+                    valign: Gtk.Align.CENTER,
+                    css_classes: ['flat', 'circular'],
+                    tooltip_text: `Download ${b.label}`,
+                });
+                dlBtn.connect('clicked', () => {
+                    try { Gtk.show_uri(null, b.downloadUrl, GLib.CURRENT_TIME); }
+                    catch (e) { console.warn('[LLM Text Pro] URL:', e.message); }
+                });
+                row.add_suffix(dlBtn);
+                row.add_css_class('dim-label');
+            }
+
+            if (!installed && b.cliPathKey === null) {
+                row.add_css_class('dim-label');
+            }
+
+            row.connect('activated', () => {
+                if (!installed) return;
+                settings.set_string('backend', b.id);
+                refreshCards();
+            });
+
+            cardMap.set(b.id, row);
+            backendGroup.add(row);
+        });
+
+        settings.connect('changed::backend', refreshCards);
+        return page;
+    }
+
+    _openBackendDialog(settings, bDef) {
+        const win = new Adw.PreferencesWindow({
+            title: `${bDef.label} Settings`,
+            modal: true, default_width: 520, default_height: 420,
+            search_enabled: false,
+        });
+        const dp = new Adw.PreferencesPage({ title: bDef.label, icon_name: bDef.icon });
+        win.add(dp);
+
+        if (bDef.id === 'local') {
+            this._buildLocalSettingsInto(dp, settings);
+        } else if (bDef.id === 'online-api') {
+            this._buildOnlineApiSettingsInto(dp, settings);
+        } else if (bDef.cliOpts) {
+            this._makeCliGroup(dp, settings, bDef.cliOpts);
+        }
+        win.present();
+    }
+
+    /** Builds Online API settings into a dialog page */
+    _buildOnlineApiSettingsInto(dp, settings) {
+        const g = new Adw.PreferencesGroup({
+            title: 'Online API',
+            description: 'Connect to OpenRouter, OpenAI, or any cloud OpenAI-compatible endpoint.',
+        });
+        dp.add(g);
+
+        g.add(makeEntry('API Endpoint', settings, 'online-api-endpoint'));
+        g.add(makePasswordEntry('API Key', settings, 'online-api-key'));
+        g.add(makeEntry('Model', settings, 'online-api-model'));
+
+        // Hint row
+        const hintRow = new Adw.ActionRow({
+            title: 'The backend is enabled when an API key is entered.',
             activatable: false,
-        });
-        const connIcon = new Gtk.Image({
-            icon_name: 'network-wired-symbolic',
-            pixel_size: 16,
-            valign: Gtk.Align.CENTER,
             css_classes: ['dim-label'],
         });
-        connRow.add_prefix(connIcon);
-        const testBtn = new Gtk.Button({
-            label: 'Test Connection',
-            valign: Gtk.Align.CENTER,
-            css_classes: ['pill'],
-            tooltip_text: 'Ping the API endpoint and show which model is loaded',
+        hintRow.add_prefix(new Gtk.Image({
+            icon_name: 'dialog-information-symbolic', pixel_size: 16,
+            valign: Gtk.Align.CENTER, css_classes: ['dim-label'],
+        }));
+        g.add(hintRow);
+
+        // Popular providers quick-fill
+        const providersGroup = new Adw.PreferencesGroup({
+            title: 'Quick Setup',
+            description: 'Click a provider to pre-fill the endpoint.',
         });
+        dp.add(providersGroup);
+
+        [
+            { name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1/chat/completions', model: 'openrouter/auto' },
+            { name: 'OpenAI', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' },
+            { name: 'Groq', endpoint: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile' },
+            { name: 'Together AI', endpoint: 'https://api.together.xyz/v1/chat/completions', model: 'meta-llama/Llama-3-70b-chat-hf' },
+            { name: 'Mistral', endpoint: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-large-latest' },
+        ].forEach(p => {
+            const row = new Adw.ActionRow({
+                title: p.name,
+                subtitle: p.endpoint,
+                activatable: true,
+            });
+            row.add_prefix(new Gtk.Image({
+                icon_name: 'network-server-symbolic', pixel_size: 16,
+                valign: Gtk.Align.CENTER, css_classes: ['dim-label'],
+            }));
+            row.add_suffix(new Gtk.Image({
+                icon_name: 'go-next-symbolic', pixel_size: 14,
+                valign: Gtk.Align.CENTER, css_classes: ['dim-label'],
+            }));
+            row.connect('activated', () => {
+                settings.set_string('online-api-endpoint', p.endpoint);
+                settings.set_string('online-api-model', p.model);
+            });
+            providersGroup.add(row);
+        });
+    }
+
+    _buildLocalSettingsInto(dp, settings) {
+        const g = new Adw.PreferencesGroup({ title: 'Local API', description: 'OpenAI-compatible endpoint.' });
+        dp.add(g);
+        g.add(makeEntry('API Endpoint', settings, 'api-endpoint'));
+        g.add(this._makeLocalModelEntry(settings));
+        g.add(makePasswordEntry('API Key', settings, 'api-key'));
+
+        const connRow = new Adw.ActionRow({ title: 'Connection Status', subtitle: 'Not tested', activatable: false });
+        const connIcon = new Gtk.Image({ icon_name: 'network-wired-symbolic', pixel_size: 16, valign: Gtk.Align.CENTER, css_classes: ['dim-label'] });
+        connRow.add_prefix(connIcon);
+        const testBtn = new Gtk.Button({ label: 'Test', valign: Gtk.Align.CENTER, css_classes: ['pill'] });
         connRow.add_suffix(testBtn);
-        localGroup.add(connRow);
+        g.add(connRow);
 
         testBtn.connect('clicked', async () => {
-            testBtn.set_sensitive(false);
-            testBtn.set_label('Testing…');
-            connRow.set_subtitle('Connecting…');
-            connIcon.set_from_icon_name('network-wired-symbolic');
-            connIcon.remove_css_class('success');
-            connIcon.remove_css_class('error');
-
+            testBtn.set_sensitive(false); testBtn.set_label('Testing…');
             try {
                 let url = settings.get_string('api-endpoint');
-                if (url.endsWith('/chat/completions'))
-                    url = url.replace('/chat/completions', '/models');
-                else if (!url.endsWith('/models'))
-                    url = url.replace(/\/?$/, '') + '/models';
-
-                const sess = new Soup.Session();
-                sess.timeout = 6;
+                if (url.endsWith('/chat/completions')) url = url.replace('/chat/completions', '/models');
+                else if (!url.endsWith('/models')) url = url.replace(/\/?$/, '') + '/models';
+                const sess = new Soup.Session(); sess.timeout = 6;
                 const msg = Soup.Message.new('GET', url);
                 const apiKey = settings.get_string('api-key');
                 if (apiKey && apiKey !== 'random' && apiKey.trim() !== '')
                     msg.request_headers.append('Authorization', `Bearer ${apiKey}`);
-
                 const bytes = await new Promise((res, rej) => {
                     sess.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (s, r) => {
                         try { res(s.send_and_read_finish(r)); } catch (e) { rej(e); }
                     });
                 });
-
-                if (msg.get_status() !== 200)
-                    throw new Error(`HTTP ${msg.get_status()} ${msg.get_reason_phrase()}`);
-
-                const json    = JSON.parse(new TextDecoder().decode(bytes.get_data()));
-                const models  = (json.data || []);
-                const primary = models[0];
-                let detail;
-                if (models.length === 0) {
-                    detail = 'Online — no model loaded';
-                } else {
-                    const name = primary.id.split('/').pop();
-                    const size = primary.size ? ` · ${(primary.size / 1e9).toFixed(1)} GB` : '';
-                    detail = `Online — ${name}${size}` +
-                        (models.length > 1 ? ` (+${models.length - 1} more)` : '');
+                if (msg.get_status() !== 200) throw new Error(`HTTP ${msg.get_status()}`);
+                const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
+                const models = json.data || [];
+                if (models.length === 0) { connRow.set_subtitle('Online — no model loaded'); }
+                else {
+                    const name = models[0].id.split('/').pop();
+                    connRow.set_subtitle(`Online — ${name}` + (models.length > 1 ? ` (+${models.length-1} more)` : ''));
                 }
-                connRow.set_subtitle(detail);
-                connIcon.set_from_icon_name('emblem-ok-symbolic');
-                connIcon.add_css_class('success');
-                testBtn.set_label('Connected ✓');
-                testBtn.add_css_class('success');
+                connIcon.set_from_icon_name('emblem-ok-symbolic'); connIcon.add_css_class('success');
+                testBtn.set_label('Connected ✓'); testBtn.add_css_class('success');
             } catch (e) {
-                connRow.set_subtitle(`Offline — ${e.message.substring(0, 90)}`);
-                connIcon.set_from_icon_name('network-error-symbolic');
-                connIcon.add_css_class('error');
-                testBtn.set_label('Failed');
-                testBtn.add_css_class('destructive-action');
+                connRow.set_subtitle(`Offline — ${e.message.substring(0, 80)}`);
+                connIcon.set_from_icon_name('network-error-symbolic'); connIcon.add_css_class('error');
+                testBtn.set_label('Failed'); testBtn.add_css_class('destructive-action');
             } finally {
                 testBtn.set_sensitive(true);
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, () => {
-                    testBtn.set_label('Test Connection');
-                    testBtn.remove_css_class('success');
-                    testBtn.remove_css_class('destructive-action');
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 4000, () => {
+                    testBtn.set_label('Test'); testBtn.remove_css_class('success'); testBtn.remove_css_class('destructive-action');
                     return GLib.SOURCE_REMOVE;
                 });
             }
         });
 
-        localGroup.add(makeSwitchRow(
-            'Auto-Start LM Studio',
-            'If the Local API is unreachable, automatically launch the LM Studio app in the background.',
-            settings,
-            'auto-start-lms'
-        ));
-
-        // ── Gemini CLI ──
-        this._makeCliGroup(page, settings, {
-            title: 'Gemini CLI',
-            description: 'Requires the Google Gemini CLI installed and authenticated.',
-            pathKey: 'gemini-cli-path',
-            modelTitle: 'Gemini Model',
-            modelKey: 'gemini-model',
-            presets: [
-                'Default (Auto)',
-                // Shorthand aliases — resolved by the CLI at runtime (work in headless -p mode)
-                'auto',       // → gemini-3-pro-preview (or gemini-2.5-pro without preview access)
-                'pro',        // → same as auto
-                'flash',      // → gemini-3-flash-preview
-                'flash-lite', // → gemini-2.5-flash-lite
-                // Gemini 3 series (current production models)
-                'gemini-3-pro-preview',
-                'gemini-3-flash-preview',
-                'gemini-3.1-pro-preview',       // requires experimental.useGemini3_1 setting
-                'gemini-3.1-flash-lite-preview',
-                // Gemini 2.5 series (stable GA)
-                'gemini-2.5-pro',
-                'gemini-2.5-flash',
-                'gemini-2.5-flash-lite',
-                // Legacy (still accepted as open strings)
-                'gemini-2.0-flash',
-                'gemini-1.5-pro',
-                'gemini-1.5-flash',
-            ],
-            downloadUrl: 'https://github.com/google-gemini/gemini-cli',
-        });
-
-        // ── Claude CLI ──
-        this._makeCliGroup(page, settings, {
-            title: 'Claude CLI',
-            description: 'Requires Claude Code CLI ("claude") installed and authenticated.',
-            pathKey: 'claude-cli-path',
-            modelTitle: 'Claude Model',
-            modelKey: 'claude-model',
-            presets: [
-                'Default (Auto)',
-                // Shorthand aliases — resolved by Claude Code CLI's parseUserSpecifiedModel()
-                'opus',   // → claude-opus-4-7 (current flagship)
-                'sonnet', // → claude-sonnet-4-6
-                'haiku',  // → claude-haiku-4-5
-                'best',   // → claude-opus-4-7
-                // Full Claude 4.x IDs (current)
-                'claude-opus-4-7',
-                'claude-sonnet-4-6',
-                'claude-haiku-4-5',
-                // Full Claude 4.x IDs (previous)
-                'claude-opus-4-6',
-                'claude-opus-4-5',
-                'claude-sonnet-4-5',
-                // Legacy Claude 3.x
-                'claude-3-7-sonnet-20250219',
-                'claude-3-5-sonnet-20241022',
-                'claude-3-5-haiku-20241022',
-                'claude-3-opus-20240229',
-            ],
-            downloadUrl: 'https://claude.ai/code',
-        });
-
-        // ── Copilot CLI ──
-        // IMPORTANT: Copilot CLI uses dot notation for version numbers (claude-sonnet-4.6)
-        // which differs from the Anthropic API format (claude-sonnet-4-6 with dashes).
-        // Only 'auto' is a special alias; no tier shortcuts like 'sonnet'/'opus' exist here.
-        this._makeCliGroup(page, settings, {
-            title: 'Copilot CLI',
-            description: 'Requires GitHub Copilot CLI ("copilot") installed and authenticated.',
-            pathKey: 'copilot-cli-path',
-            modelTitle: 'Copilot Model',
-            modelKey: 'copilot-model',
-            presets: [
-                'Default (Auto)',
-                'auto',              // let Copilot pick best available model automatically
-                // Claude via Copilot — dot notation (verified from copilot help config)
-                'claude-sonnet-4.6', // current default
-                'claude-sonnet-4.5',
-                'claude-haiku-4.5',
-                'claude-opus-4.7',
-                'claude-opus-4.6',
-                'claude-opus-4.6-fast',
-                'claude-opus-4.5',
-                // OpenAI via Copilot
-                'gpt-5.4',
-                'gpt-5.4-mini',
-                'gpt-5-mini',
-                'gpt-4.1',
-            ],
-            downloadUrl: 'https://github.com/github/copilot-cli',
-        });
-
-        // ── Codex CLI ──
-        // Uses: codex exec --skip-git-repo-check --ephemeral --full-auto [-m MODEL] "PROMPT"
-        // Auth: CODEX_API_KEY env var (set below) or OAuth via 'codex login'
-        // Output: plain text to stdout — no --output-format flag
-        this._makeCliGroup(page, settings, {
-            title: 'Codex CLI',
-            description: 'Requires OpenAI Codex CLI installed (npm install -g @openai/codex) and authenticated.',
-            pathKey: 'codex-cli-path',
-            modelTitle: 'Codex Model',
-            modelKey: 'codex-model',
-            apiKeyKey: 'codex-api-key',
-            apiKeyTitle: 'API Key (CODEX_API_KEY)',
-            presets: [
-                'Default (Auto)',
-                // Full model IDs (verified from developers.openai.com/codex/models)
-                'gpt-5.5',            // newest frontier
-                'gpt-5.4',            // flagship (CLI default)
-                'gpt-5.4-mini',       // fast / cost-effective
-                'gpt-5.3-codex',      // optimised for software engineering
-                'gpt-5.3-codex-spark',// near-instant iteration (Pro plan only)
-                'gpt-5.2',            // previous general-purpose
-            ],
-            downloadUrl: 'https://developers.openai.com/codex/cli',
-        });
-
-        // ── OpenCode CLI ──
-        this._makeCliGroup(page, settings, {
-            title: 'OpenCode CLI',
-            description: 'Requires OpenCode CLI installed (e.g. npm i -g opencode) and configured.',
-            pathKey: 'opencode-cli-path',
-            modelTitle: 'OpenCode Model',
-            modelKey: 'opencode-model',
-            presets: [
-                'Default (Auto)',
-            ],
-            downloadUrl: 'https://opencode.ai',
-            fetchCommand: ['opencode', 'models'],
-            autoFetchModels: true,
-        });
-
-        return page;
+        g.add(makeSwitchRow('Auto-Start LM Studio', 'Launch LM Studio if Local API is unreachable.', settings, 'auto-start-lms'));
+        g.add(makeSwitchRow('Enable Local API', 'Disable to hide Local API from the backend list.', settings, 'local-api-enabled'));
     }
 
-    _makeCliGroup(page, settings, { title, description, pathKey, modelTitle, modelKey, presets, downloadUrl, apiKeyKey, apiKeyTitle, fetchCommand, autoFetchModels }) {
+    _makeCliGroup(container, settings, { title, description, pathKey, modelTitle, modelKey, presets, downloadUrl, apiKeyKey, apiKeyTitle, fetchCommand, autoFetchModels }) {
         const group = new Adw.PreferencesGroup({ title, description });
-        page.add(group);
+        container.add(group);
 
         // Status row
         const statusIcon = new Gtk.Image({ pixel_size: 16, valign: Gtk.Align.CENTER });
@@ -456,91 +519,6 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             group.add(apiKeyHint);
         }
 
-        // Today's usage stats row
-        const cliType   = pathKey.replace('-cli-path', ''); // 'gemini', 'claude', 'copilot', 'codex'
-        const usageRow  = new Adw.ActionRow({ title: "Today's Usage", activatable: false });
-        usageRow.add_prefix(new Gtk.Image({
-            icon_name: 'utilities-system-monitor-symbolic',
-            pixel_size: 16,
-            valign: Gtk.Align.CENTER,
-            css_classes: ['dim-label'],
-        }));
-        const refreshUsageBtn = new Gtk.Button({
-            icon_name: 'view-refresh-symbolic',
-            valign: Gtk.Align.CENTER,
-            css_classes: ['flat'],
-            tooltip_text: 'Refresh usage stats',
-        });
-        usageRow.add_suffix(refreshUsageBtn);
-        group.add(usageRow);
-
-        const updateUsageRow = () => {
-            try {
-                const usagePath = GLib.build_filenamev([
-                    GLib.get_user_data_dir(),
-                    'llm-text-pro@sokolowski.tech', 'usage.json',
-                ]);
-                const [ok, bytes] = GLib.file_get_contents(usagePath);
-                if (!ok) { usageRow.set_subtitle('No usage data yet'); return; }
-                const data  = JSON.parse(new TextDecoder().decode(bytes));
-                const today = new Date().toISOString().slice(0, 10);
-                if (data.date !== today) { usageRow.set_subtitle('No usage today'); return; }
-
-                if (cliType === 'claude') {
-                    const u = data.claude;
-                    if (u.calls === 0) {
-                        usageRow.set_subtitle('No calls yet today');
-                    } else {
-                        const cost   = u.costUsd >= 0.0001 ? `$${u.costUsd.toFixed(4)}` : '<$0.001';
-                        const tokens = u.inputTokens + u.outputTokens;
-                        const tokStr = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K tokens` : `${tokens} tokens`;
-                        const cache  = u.cacheTokens > 0 ? ` · ${u.cacheTokens} cached` : '';
-                        usageRow.set_subtitle(`${cost} · ${tokStr}${cache} · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
-                    }
-                } else if (cliType === 'copilot') {
-                    const u = data.copilot;
-                    if (u.calls === 0) {
-                        usageRow.set_subtitle('No calls yet today');
-                    } else {
-                        usageRow.set_subtitle(`${u.premiumRequests} premium req · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
-                    }
-                } else if (cliType === 'gemini') {
-                    const u = data.gemini;
-                    if (u.calls === 0) {
-                        usageRow.set_subtitle('No calls yet today');
-                    } else {
-                        const tokStr = u.totalTokens >= 1000
-                            ? `${(u.totalTokens / 1000).toFixed(1)}K tokens`
-                            : `${u.totalTokens} tokens`;
-                        usageRow.set_subtitle(`${tokStr} · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
-                    }
-                } else if (cliType === 'codex') {
-                    const u = data.codex;
-                    if (!u || u.calls === 0) {
-                        usageRow.set_subtitle('No calls yet today');
-                    } else {
-                        usageRow.set_subtitle(`${u.calls} call${u.calls !== 1 ? 's' : ''} today`);
-                    }
-                } else if (cliType === 'opencode') {
-                    const u = data.opencode;
-                    if (!u || u.calls === 0) {
-                        usageRow.set_subtitle('No calls yet today');
-                    } else {
-                        const cost   = u.costUsd >= 0.0001 ? `$${u.costUsd.toFixed(4)}` : '<$0.001';
-                        const tokens = u.inputTokens + u.outputTokens;
-                        const tokStr = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K tokens` : `${tokens} tokens`;
-                        const cache  = u.cacheTokens > 0 ? ` · ${u.cacheTokens} cached` : '';
-                        usageRow.set_subtitle(`${cost} · ${tokStr}${cache} · ${u.calls} call${u.calls !== 1 ? 's' : ''}`);
-                    }
-                }
-            } catch (_) {
-                usageRow.set_subtitle('No usage data');
-            }
-        };
-
-        refreshUsageBtn.connect('clicked', updateUsageRow);
-        updateUsageRow();
-
         const refresh = () => {
             const path = settings.get_string(pathKey);
             const found = isCliInstalled(path);
@@ -556,7 +534,6 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             downloadBtn.set_visible(!found);
             modelRow.set_sensitive(found);
             if (apiKeyRow) apiKeyRow.set_sensitive(found);
-            usageRow.set_sensitive(found);
         };
 
         settings.connect(`changed::${pathKey}`, refresh);
@@ -1107,9 +1084,9 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         const backendRow = new Adw.ComboRow({
             title: 'Backend',
             subtitle: 'Override the global backend for this action only',
-            model: new Gtk.StringList({ strings: ['Default (global)', 'Local API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI', 'Codex CLI'] }),
+            model: new Gtk.StringList({ strings: ['Default (global)', 'Local API', 'Online API', 'Gemini CLI', 'Claude CLI', 'Copilot CLI', 'Codex CLI', 'OpenCode CLI'] }),
         });
-        const bkKeys = ['default', 'local', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli'];
+        const bkKeys = ['default', 'local', 'online-api', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli', 'opencode-cli'];
         backendRow.set_selected(Math.max(0, bkKeys.indexOf(action.backend || 'default')));
         settingsGroup.add(backendRow);
 
@@ -1838,11 +1815,12 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         [
             ['document-edit-symbolic',       '16 built-in text actions',    'Grammar, improve, translate, summarise, reply, code refactor, and more'],
             ['list-add-symbolic',            'Fully customisable actions',   'Add, edit, reorder, or disable any action — with custom AI prompts'],
-            ['computer-symbolic',            'Multiple AI backends',         'Local (Ollama / LM Studio), Gemini CLI, Claude CLI, and Copilot CLI'],
+            ['computer-symbolic',            '7 AI backends',                'Local, Online API (OpenRouter/OpenAI), Gemini, Claude, Copilot, Codex, and OpenCode CLI'],
             ['security-medium-symbolic',     'Per-action backend override',  'Send sensitive text only to your local model, not a cloud API'],
             ['document-open-recent-symbolic','Transformation history',       'Re-copy any past result directly from the tray menu'],
             ['input-keyboard-symbolic',      'Global hotkeys',               'Trigger any action from anywhere without opening the tray'],
             ['edit-paste-symbolic',          'Auto-paste',                   'Processed text is pasted back into the active window automatically'],
+            ['media-playlist-repeat-symbolic','Auto-action on copy',          'Automatically trigger any action whenever you copy text to clipboard'],
         ].forEach(([icon, title, subtitle]) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: false });
             row.add_prefix(new Gtk.Image({
@@ -1912,6 +1890,12 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 url:      'https://lmstudio.ai',
             },
             {
+                title:    'Online API — OpenRouter',
+                subtitle: 'Sign up at openrouter.ai  ·  Works with any OpenAI-compatible cloud API',
+                icon:     'network-transmit-receive-symbolic',
+                url:      'https://openrouter.ai',
+            },
+            {
                 title:    'Gemini CLI',
                 subtitle: 'npm install -g @google/gemini-cli  →  run gemini once to authenticate',
                 icon:     'applications-science-symbolic',
@@ -1928,6 +1912,18 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 subtitle: 'Install GitHub Copilot CLI  →  copilot auth login',
                 icon:     'applications-science-symbolic',
                 url:      'https://github.com/github/copilot-cli',
+            },
+            {
+                title:    'Codex CLI',
+                subtitle: 'npm install -g @openai/codex  →  codex login to authenticate',
+                icon:     'applications-science-symbolic',
+                url:      'https://developers.openai.com/codex/cli',
+            },
+            {
+                title:    'OpenCode CLI',
+                subtitle: 'npm install -g opencode  →  opencode providers to configure',
+                icon:     'applications-science-symbolic',
+                url:      'https://opencode.ai',
             },
         ].forEach(({ title, subtitle, icon, url }) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: true });
@@ -1984,7 +1980,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         [
             ['avatar-default-symbolic',  'Author',    'David Sokolowski'],
             ['document-edit-symbolic',   'Based On',  'LLM Text Modifier by Rishabh Bajpai'],
-            ['text-x-generic-symbolic',  'License',   'GNU General Public License v2 or later'],
+            ['text-x-generic-symbolic',  'License',   'GNU General Public License v3.0 (GPLv3)'],
         ].forEach(([icon, title, subtitle]) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: false });
             row.add_prefix(new Gtk.Image({

@@ -1,6 +1,6 @@
 {
   "name": "LLM Text Pro",
-  "description": "✨ Supercharge your clipboard with AI!\n\nFix grammar, improve text, translate between German and English, or run any custom text action — all from a hotkey. Supports local LLM APIs (Ollama, LM Studio), Gemini CLI, and Claude CLI.\n\n✨ Features:\n• Animated tray icon with live status\n• Local API, Gemini CLI, or Claude CLI backends\n• Fully customisable actions — add, remove, enable/disable, change prompts & shortcuts\n• Auto-paste result back into the active window\n• Translation shortcut (German ↔ English, auto-detected)\n• Per-action backend override & model selection\n• Transformation history",
+  "description": "✨ Supercharge your clipboard with AI!\n\nFix grammar, improve text, translate between languages, or run any custom text action — all from a hotkey or automatically on copy. Supports 7 AI backends: Local API (Ollama, LM Studio), Online API (OpenRouter, OpenAI, Groq, Mistral), Gemini CLI, Claude CLI, Copilot CLI, Codex CLI, and OpenCode CLI.\n\n✨ Features:\n• Animated tray icon with live status\n• 7 AI backends with per-action override\n• Fully customisable actions — add, remove, enable/disable, change prompts & shortcuts\n• Auto-action on copy — trigger actions automatically when you copy text\n• Auto-paste result back into the active window\n• Dynamic model fetching from Local API and OpenCode CLI\n• Per-backend usage tracking (tokens, cost, call count)\n• Transformation history with action queueing",
   "uuid": "llm-text-pro@sokolowski.tech",
   "shell-version": [
     "45",

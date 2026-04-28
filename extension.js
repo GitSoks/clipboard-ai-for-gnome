@@ -342,7 +342,8 @@ class TextProIndicator extends PanelMenu.Button {
         let current = s.get_string('backend');
 
         const backends = [
-            { id: 'local',       name: 'Local',   cliPath: null },
+            { id: 'local',       name: 'Local',   cliPath: null,                                      isEnabled: () => s.get_boolean('local-api-enabled') },
+            { id: 'online-api',  name: 'Online',  cliPath: null,                                      isEnabled: () => s.get_string('online-api-key').trim() !== '' },
             { id: 'gemini-cli',  name: 'Gemini',  cliPath: s.get_string('gemini-cli-path') },
             { id: 'claude-cli',  name: 'Claude',  cliPath: s.get_string('claude-cli-path') },
             { id: 'copilot-cli', name: 'Copilot', cliPath: s.get_string('copilot-cli-path') },
@@ -350,15 +351,22 @@ class TextProIndicator extends PanelMenu.Button {
             { id: 'opencode-cli',name: 'OpenCode',cliPath: s.get_string('opencode-cli-path') },
         ];
 
-        // Auto-switch to local if the current CLI backend is not installed
+        // Auto-switch if the current backend is not available
         const cur = backends.find(b => b.id === current);
-        if (cur && cur.cliPath !== null && !cliIsInstalled(cur.cliPath)) {
+        const curAvail = cur && (
+            (cur.cliPath !== null && cliIsInstalled(cur.cliPath)) ||
+            (cur.cliPath === null && (!cur.isEnabled || cur.isEnabled()))
+        );
+        if (!curAvail) {
             s.set_string('backend', 'local');
             current = 'local';
         }
 
-        // Filter to only installed backends
-        const available = backends.filter(b => b.cliPath === null || cliIsInstalled(b.cliPath));
+        // Filter to only available backends
+        const available = backends.filter(b => {
+            if (b.cliPath !== null) return cliIsInstalled(b.cliPath);
+            return !b.isEnabled || b.isEnabled();
+        });
 
         // Build rows of 3 buttons each
         const COLS = 3;
@@ -1313,6 +1321,8 @@ export default class LLMTextProExtension extends Extension {
                 return this._callCLI('codex', prompt, text);
             case 'opencode-cli':
                 return this._callCLI('opencode', prompt, text);
+            case 'online-api':
+                return this._callOnlineAPI(prompt, text);
             case 'local':
             default:
                 return this._callLocalAPI(prompt, text);
@@ -1369,6 +1379,54 @@ export default class LLMTextProExtension extends Extension {
         const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
         const content = json?.choices?.[0]?.message?.content;
         if (!content) throw new Error('Unexpected API response format.');
+
+        let info = `Model: ${json.model || model}`;
+        if (json.usage?.total_tokens) info += `\nTokens: ${json.usage.total_tokens}`;
+
+        return { text: content.trim(), info };
+    }
+
+    // ── Online OpenAI-compatible API (OpenRouter etc.) ───────────────────────
+
+    async _callOnlineAPI(prompt, text) {
+        if (!this._httpSession) throw new Error('HTTP session not initialised.');
+
+        const endpoint = this._settings.get_string('online-api-endpoint');
+        const model    = this._settings.get_string('online-api-model');
+        const apiKey   = this._settings.get_string('online-api-key');
+
+        if (!apiKey || apiKey.trim() === '')
+            throw new Error('Online API key is not configured. Set it in the Backend settings.');
+
+        const payload = JSON.stringify({
+            model,
+            messages: [
+                { role: 'system', content: prompt },
+                { role: 'user',   content: text   },
+            ],
+            stream: false,
+        });
+
+        const message = Soup.Message.new('POST', endpoint);
+        message.request_headers.append('Authorization', `Bearer ${apiKey}`);
+        message.set_request_body_from_bytes(
+            'application/json',
+            new TextEncoder().encode(payload)
+        );
+
+        const bytes = await new Promise((resolve, reject) => {
+            this._httpSession.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (s, res) => {
+                try { resolve(s.send_and_read_finish(res)); }
+                catch (e) { reject(e); }
+            });
+        });
+
+        if (message.get_status() !== 200)
+            throw new Error(`Online API error ${message.get_status()}: ${message.get_reason_phrase()}`);
+
+        const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
+        const content = json?.choices?.[0]?.message?.content;
+        if (!content) throw new Error('Unexpected Online API response format.');
 
         let info = `Model: ${json.model || model}`;
         if (json.usage?.total_tokens) info += `\nTokens: ${json.usage.total_tokens}`;

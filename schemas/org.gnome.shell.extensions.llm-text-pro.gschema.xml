@@ -7,7 +7,7 @@
     <key name="backend" type="s">
       <default>'local'</default>
       <summary>Active AI backend</summary>
-      <description>Which backend to use: 'local', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli', or 'opencode-cli'.</description>
+      <description>Which backend to use: 'local', 'online-api', 'gemini-cli', 'claude-cli', 'copilot-cli', 'codex-cli', or 'opencode-cli'.</description>
     </key>
 
     <!-- ── Local API ─────────────────────────────────────────────── -->
@@ -24,6 +24,28 @@
     <key name="local-model" type="s">
       <default>'google/gemma-4-e2b'</default>
       <summary>Model name for local API</summary>
+    </key>
+
+    <key name="local-api-enabled" type="b">
+      <default>true</default>
+      <summary>Whether the Local API backend is enabled</summary>
+      <description>Set to false to hide the Local API from the backend list.</description>
+    </key>
+
+    <!-- ── Online API (OpenRouter / OpenAI-compatible) ─────────── -->
+    <key name="online-api-endpoint" type="s">
+      <default>'https://openrouter.ai/api/v1/chat/completions'</default>
+      <summary>Cloud OpenAI-compatible API endpoint (e.g. OpenRouter)</summary>
+    </key>
+
+    <key name="online-api-key" type="s">
+      <default>''</default>
+      <summary>API key for the online API endpoint</summary>
+    </key>
+
+    <key name="online-api-model" type="s">
+      <default>'openrouter/auto'</default>
+      <summary>Model name for the online API</summary>
     </key>
 
     <!-- ── Gemini CLI ─────────────────────────────────────────────── -->
