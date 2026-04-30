@@ -869,6 +869,8 @@ export default class LLMTextProExtension extends Extension {
         this._actionQueue        = [];
 
         this._clipboardSignalId  = null;
+        this._clipboardPollTimer = null;
+        this._lastClipboardText  = null;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -1132,13 +1134,33 @@ export default class LLMTextProExtension extends Extension {
     _setupClipboardListener() {
         this._clipboardIgnoreUntil = 0;
         this._clipboardDebounceTimer = null;
-        const selection = global.display.get_selection();
-        this._clipboardSignalId = selection.connect('owner-changed', (sel, selectionType, _source) => {
-            if (selectionType !== Meta.SelectionType.CLIPBOARD) return;
+        this._lastClipboardText = null;
 
-            // Ignore clipboard changes that originated from this extension
-            // Use a time-based cooldown (1500ms) rather than a boolean flag to
-            // handle the case where owner-changed fires multiple times per copy
+        // Seed with whatever is already on the clipboard so the first poll
+        // doesn't immediately fire on pre-existing content.
+        const clipboard = St.Clipboard.get_default();
+        clipboard.get_text(St.ClipboardType.CLIPBOARD, (_clip, text) => {
+            this._lastClipboardText = text ?? null;
+        });
+
+        // Poll for clipboard changes — more reliable than 'owner-changed' on
+        // GNOME Wayland where that signal is not consistently delivered.
+        this._clipboardPollTimer = GLib.timeout_add(GLib.PRIORITY_LOW, 500, () => {
+            this._pollClipboardForChanges();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _pollClipboardForChanges() {
+        const clipboard = St.Clipboard.get_default();
+        clipboard.get_text(St.ClipboardType.CLIPBOARD, (_clip, text) => {
+            if (!text || !text.trim()) return;
+            if (text === this._lastClipboardText) return;
+
+            // Always update tracking even during suppression, so we don't
+            // re-fire with the extension's own output text after the window expires.
+            this._lastClipboardText = text;
+
             if (Date.now() < this._clipboardIgnoreUntil) return;
 
             this._onClipboardChanged();
@@ -1149,6 +1171,10 @@ export default class LLMTextProExtension extends Extension {
         if (this._clipboardSignalId) {
             global.display.get_selection().disconnect(this._clipboardSignalId);
             this._clipboardSignalId = null;
+        }
+        if (this._clipboardPollTimer) {
+            GLib.source_remove(this._clipboardPollTimer);
+            this._clipboardPollTimer = null;
         }
         if (this._clipboardDebounceTimer) {
             GLib.source_remove(this._clipboardDebounceTimer);
