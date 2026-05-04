@@ -1,119 +1,203 @@
-# LLM Text Pro
+<p align="center">
+  <img src="icons/logo.svg" width="120" height="120" alt="LLM Text Pro Logo">
+</p>
 
-✨ **Supercharge your clipboard with AI!** ✨
+<h1 align="center">LLM Text Pro</h1>
 
-LLM Text Pro is a powerful, customizable GNOME Shell Extension that lets you instantly transform your clipboard text using AI. Whether you need to fix grammar, rewrite text, translate languages, or run custom prompts, you can do it all with a simple hotkey—without ever leaving your current window.
+<p align="center">
+  <strong>AI-powered clipboard actions for GNOME Shell</strong>
+</p>
 
-![Version](https://img.shields.io/badge/version-11-blue.svg)
-![GNOME Shell](https://img.shields.io/badge/GNOME%20Shell-45%20%7C%2046%20%7C%2047%20%7C%2048%20%7C%2049%20%7C%2050-brightgreen.svg)
-![License](https://img.shields.io/badge/license-GPLv3-green.svg)
+<p align="center">
+  <img src="https://img.shields.io/badge/version-11-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/GNOME%20Shell-48%20%7C%2049%20%7C%2050-brightgreen.svg" alt="GNOME Shell">
+  <img src="https://img.shields.io/badge/license-GPLv3-green.svg" alt="License">
+</p>
 
-## Features
+<p align="center">
+  Transform copied text anywhere on your desktop with a hotkey or automatic workflow — without switching apps.
+</p>
 
-- **7 AI Backends:** Seamlessly switch between Local AI (Ollama, LM Studio), **Online API** (OpenRouter, OpenAI, Groq, Together AI, Mistral — any OpenAI-compatible cloud endpoint), Google's **Gemini CLI**, Anthropic's **Claude CLI**, GitHub's **Copilot CLI**, OpenAI's **Codex CLI**, and **OpenCode CLI**.
-- **Auto-Action on Copy:** Automatically trigger any action whenever you copy text to the clipboard — no hotkey needed. Includes debouncing and smart suppression to prevent recursive loops.
-- **Live Status & Usage Tracking:** The animated tray icon displays real-time processing status, with per-backend usage stats (tokens, cost, call count) tracked in the tray menu.
-- **Auto-Start Local Servers:** Optionally configure the extension to automatically start your LM Studio server in the background if a local AI request fails.
-- **Dynamic Model Selection:** Fetch available models from your Local AI instance or OpenCode CLI, or choose from up-to-date presets for Gemini, Claude, Copilot, and Codex. Supports `Default (Auto)` to defer to your CLI's native configuration.
-- **Customizable Actions:** Create unlimited custom prompts (e.g., "Summarize", "Refactor Code", "Translate to French") and assign global GNOME hotkeys to them.
-- **Per-Action Overrides:** Want your grammar check to use a fast local model, but your complex coding questions to use Claude? You can override the global backend on a per-action basis.
-- **Auto-Paste:** Optionally simulate `Ctrl+V` to automatically paste the AI's response back into your active window.
-- **Transformation History:** Keeps a rolling history of your recent transformations accessible from the tray menu, allowing you to instantly re-copy past results.
-- **Action Queueing:** If you trigger a new action while one is processing, it gets queued (up to 5) and runs automatically when the current action finishes.
+---
+
+## Overview
+
+**LLM Text Pro** is a GNOME Shell extension for instant text transformation. Copy text, trigger an action, and get the rewritten result back on your clipboard — or pasted straight into the focused app.
+
+It is designed for real desktop use: quick grammar fixes, translation, tone adjustment, drafting replies, summarising long text, and even code explanation or refactoring.
+
+## Highlights
+
+- **7 AI backends**: Local API, Online API, Gemini CLI, Claude CLI, Copilot CLI, Codex CLI, and OpenCode CLI.
+- **16 built-in actions** plus unlimited custom prompts.
+- **Per-action backend routing** so each action can use a different model or provider.
+- **Auto-action on copy** with debouncing and loop prevention.
+- **Auto-paste support** to put results directly into the active window.
+- **Live tray status, history, and usage tracking** for a smoother day-to-day workflow.
+- **Optional LM Studio auto-start** when the local backend is unavailable.
+
+## Compatibility
+
+- **GNOME Shell:** 48, 49, 50
+- **Platform:** Linux desktop with GNOME Shell
+- **Backends:** At least one supported local, cloud, or CLI backend configured
+
+## Supported backends
+
+| Backend | Type | Notes |
+| --- | --- | --- |
+| **Local API** | Local | Works with Ollama or LM Studio via an OpenAI-compatible endpoint |
+| **Online API** | Cloud | Supports OpenRouter, OpenAI, Groq, Together AI, Mistral, and other compatible APIs |
+| **Gemini CLI** | CLI | Uses Google's Gemini command-line tool |
+| **Claude CLI** | CLI | Uses Anthropic Claude Code |
+| **Copilot CLI** | CLI | Uses GitHub Copilot CLI |
+| **Codex CLI** | CLI | Uses OpenAI Codex CLI |
+| **OpenCode CLI** | CLI | Uses OpenCode models and provider configuration |
 
 ## Installation
 
 ### Prerequisites
 
-Depending on which backend you want to use, you will need the corresponding tool installed:
+Install and authenticate the backend(s) you want to use:
 
-- **Local API:** [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) running locally (or any reachable OpenAI-compatible endpoint). Can be disabled in settings.
-- **Online API:** Any OpenAI-compatible cloud endpoint — [OpenRouter](https://openrouter.ai/), [OpenAI](https://platform.openai.com/), [Groq](https://groq.com/), [Together AI](https://together.ai/), or [Mistral](https://mistral.ai/). Just enter an API key to enable.
-- **Gemini CLI:** Install via npm: `npm install -g @google/gemini-cli` and run `gemini` once to authenticate.
-- **Claude CLI:** Install via npm: `npm install -g @anthropic-ai/claude-code` and run `claude` once to authenticate.
-- **Copilot CLI:** Install the GitHub Copilot CLI and run `copilot login` to authenticate.
-- **Codex CLI:** Install via npm: `npm install -g @openai/codex` and run `codex login` to authenticate. Optionally set `CODEX_API_KEY`.
-- **OpenCode CLI:** Install via npm: `npm install -g opencode` and run `opencode providers` to configure your AI providers.
+| Backend | Install | Auth / setup |
+| --- | --- | --- |
+| **Local API** | [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/) | Start a compatible local server |
+| **Online API** | OpenRouter / OpenAI-compatible provider | Add an API key in extension settings |
+| **Gemini CLI** | `npm install -g @google/gemini-cli` | Run `gemini` once |
+| **Claude CLI** | Install from [claude.ai/code](https://claude.ai/code) | Run `claude` once |
+| **Copilot CLI** | Install GitHub Copilot CLI | Run `copilot login` |
+| **Codex CLI** | `npm install -g @openai/codex` | Run `codex login` or set `CODEX_API_KEY` |
+| **OpenCode CLI** | `npm install -g opencode` | Configure providers with `opencode providers` |
 
-### Quick Install (From Source)
+### Quick install
 
 ```bash
-# Clone and install
-git clone https://git.sokolowski.tech/david/llm-text-pro@sokolowski.tech.git
-cd llm-text-pro@sokolowski.tech
+git clone https://github.com/GitSoks/llm-text-pro.git
+cd llm-text-pro
 bash install.sh
 ```
 
-### Manual Installation
+The installer will:
 
-1. Clone this repository into your GNOME extensions directory:
-   ```bash
-   git clone https://git.sokolowski.tech/david/llm-text-pro@sokolowski.tech.git ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech
-   ```
-2. Compile the settings schema:
-   ```bash
-   glib-compile-schemas ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech/schemas/
-   ```
-3. Restart GNOME Shell:
-   - **X11:** Press `Alt+F2`, type `r`, and press `Enter`.
-   - **Wayland:** Log out and log back into your session.
-4. Enable the extension via the **Extensions** app or terminal:
-   ```bash
-   gnome-extensions enable llm-text-pro@sokolowski.tech
-   ```
+1. compile the GNOME schema,
+2. build a temporary extension ZIP,
+3. install or update the extension with `gnome-extensions`,
+4. reload the extension, and
+5. clean up the temporary archive.
 
-## Configuration
+### Manual installation
 
-Open the **Extension Settings** (via the Extensions app or the tray menu) to configure:
+```bash
+git clone https://github.com/GitSoks/llm-text-pro.git \
+  ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech
 
-1. **Backend:** Choose your default active AI — click any backend card to switch. Each card shows install status and the active selection.
-2. **API/CLI Settings:** Set your Local API endpoint, API key, and select your preferred models. OpenCode models are auto-fetched from the CLI.
-3. **Actions:** Add, edit, or remove your text transformation prompts and assign hotkeys.
-4. **General:** Toggle Auto-Paste, Auto-Action on Copy, Desktop Notifications, and Periodic Quota Checks.
+glib-compile-schemas \
+  ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech/schemas/
+
+gnome-extensions enable llm-text-pro@sokolowski.tech
+```
+
+If you are on **Wayland**, you may need to log out and back in after first install.
+
+## First-time setup
+
+Open **Extension Settings** from the Extensions app or the top-panel menu, then:
+
+1. choose the backend you want to use,
+2. configure its endpoint, binary path, model, or API key,
+3. review the built-in actions,
+4. assign your preferred global hotkeys, and
+5. optionally enable auto-paste, history, and auto-action on copy.
 
 ## Usage
 
-1. **Highlight and Copy** the text you want to transform (e.g., `Ctrl+C`).
-2. Press the **Hotkey** assigned to your desired action (e.g., `Ctrl+Alt+G` for Fix Grammar).
-3. The tray icon will spin (`⠋ ⠙ ⠹...`) indicating processing.
-4. Once complete, you will receive a native notification showing the model used and token count. The transformed text is now in your clipboard (or auto-pasted if enabled).
+1. **Copy** any text.
+2. **Trigger** an action from a hotkey or the panel menu.
+3. **Wait** for the tray indicator to finish processing.
+4. **Paste** the transformed text manually, or let auto-paste do it for you.
 
-### Auto-Action on Copy
+### Auto-action on copy
 
-Enable "Auto-Action on Copy" in the tray menu to automatically trigger a selected action whenever you copy new text. This is useful for workflows where you always want a specific transformation applied (e.g., grammar fix or translation).
+You can configure one action to run automatically every time text is copied.
 
-## Default Hotkeys
+> **Note**
+> For privacy and safety, automatic clipboard processing only runs when the resolved backend is **Local API**.
 
-| Hotkey            | Action                  |
-|-------------------|-------------------------|
-| `Ctrl + Alt + G`  | Fix Grammar             |
-| `Ctrl + Alt + I`  | Improve Text            |
-| `Ctrl + Alt + H`  | Remove AI Patterns      |
-| `Ctrl + Alt + M`  | Reply to Message / Mail |
-| `Ctrl + Alt + T`  | Translate DE ↔ EN       |
-| `Ctrl + Alt + P`  | Translate DE ↔ PL       |
-| `Ctrl + Alt + K`  | Write from Keywords     |
+## Built-in actions
 
-All hotkeys can be changed or removed in the **Actions** settings page.
+The extension ships with 16 ready-to-use actions:
 
-## Acknowledgements & Citations
+- Fix Grammar
+- Improve Text
+- Remove AI Patterns
+- Make Professional
+- Make Casual
+- Fix Tone
+- Reply to Message / Mail
+- Translate DE ↔ EN
+- Translate DE ↔ PL
+- Summarize
+- Bullet Points
+- Write from Keywords
+- Expand Text
+- Add Emojis
+- Explain Code
+- Refactor Code
 
-LLM Text Pro is a major architectural overhaul and feature expansion built by **David Sokolowski**. 
+All prompts are fully editable, and you can add as many custom actions as you want.
 
-It is proudly based upon the foundational concepts of the original **[LLM Text Modifier](https://github.com/rishabhbajpai/llm-text-modifier)** extension created by [Rishabh Bajpai](https://rishabhbajpai24.com). The original project provided the excellent groundwork for clipboard manipulation and basic API interactions within the GNOME Shell environment. 
+## Recommended hotkeys
 
-This expanded "Pro" fork introduces:
-- Support for 6 CLI-based and API backends (Local, Gemini, Claude, Copilot, Codex, OpenCode).
-- Auto-action on copy with smart clipboard monitoring and debouncing.
-- Advanced JSON/JSONL parsing for token and model tracking across all backends.
-- Dynamic model fetching from Local API and OpenCode CLI.
-- Live local model fetching and top-bar status indicators.
-- A completely redesigned UI with native GNOME icons and CSS animations.
-- Per-backend usage tracking (tokens, cost, call count).
-- Action queueing (up to 5 concurrent requests).
+No default hotkeys are enforced, but these are sensible starting points:
+
+| Hotkey | Action |
+| --- | --- |
+| `Ctrl+Alt+G` | Fix Grammar |
+| `Ctrl+Alt+I` | Improve Text |
+| `Ctrl+Alt+H` | Remove AI Patterns |
+| `Ctrl+Alt+M` | Reply to Message / Mail |
+| `Ctrl+Alt+T` | Translate DE ↔ EN |
+| `Ctrl+Alt+P` | Translate DE ↔ PL |
+| `Ctrl+Alt+K` | Write from Keywords |
+
+## Privacy and data flow
+
+- **Local API** keeps processing on your machine.
+- **Online API** and **CLI backends** may send text to external services according to their provider behavior and account configuration.
+- **History** and **usage stats** are stored locally in your user data directory.
+- **Auto-action on copy** is limited to the local backend path by design.
+
+## Development notes
+
+Useful files in this repository:
+
+- `extension.js` — tray indicator, clipboard workflow, backend dispatch, history, and usage tracking
+- `prefs.js` — Adwaita preferences UI, backend setup, action editor, and history viewer
+- `schemas/` — GNOME settings schema
+- `icons/` — backend and branding icons
+- `install.sh` — local packaging and install helper
+
+For local iteration, `bash install.sh` is the main workflow.
+
+## Brand icons
+
+The extension uses custom icons for each supported backend in both the preferences UI and the top-panel menu:
+
+<p align="center">
+  <img src="icons/ollama-symbolic.svg" width="32" alt="Local AI"> &nbsp;
+  <img src="icons/open-webui-symbolic.svg" width="32" alt="Online API"> &nbsp;
+  <img src="icons/gemini-symbolic.svg" width="32" alt="Gemini"> &nbsp;
+  <img src="icons/claude-symbolic.svg" width="32" alt="Claude"> &nbsp;
+  <img src="icons/copilot-symbolic.svg" width="32" alt="Copilot"> &nbsp;
+  <img src="icons/codex-symbolic.svg" width="32" alt="Codex"> &nbsp;
+  <img src="icons/opencode-symbolic.svg" width="32" alt="OpenCode">
+</p>
+
+## Acknowledgements
+
+**LLM Text Pro** is based on **[LLM Text Modifier](https://github.com/rishabhbajpai/llm-text-modifier)** by [Rishabh Bajpai](https://rishabhbajpai24.com), extended with multi-backend support, richer UI, queueing, usage tracking, history, and desktop-focused automation.
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. 
-
-See the [LICENSE](LICENSE) file for details. This ensures the extension remains free and open-source, aligning with the GNOME project's philosophy.
+Licensed under the **GNU General Public License v3.0 (GPLv3)**. See [LICENSE](LICENSE).

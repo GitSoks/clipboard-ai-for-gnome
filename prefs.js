@@ -19,15 +19,15 @@ import Soup from 'gi://Soup';
 
 const DEFAULT_ACTIONS = [
     {
-        id: 'fix-grammar', name: 'Fix Grammar', hotkey: '<Control><Alt>g', enabled: true, backend: 'default',
+        id: 'fix-grammar', name: 'Fix Grammar', hotkey: '', enabled: true, backend: 'default',
         prompt: "You are a precise grammar and spelling correction tool. Fix all grammar, spelling, and punctuation errors in the following text. Preserve the original wording, tone, and style — only correct mistakes. Return ONLY the corrected text, with no explanation or preamble.",
     },
     {
-        id: 'improve-text', name: 'Improve Text', hotkey: '<Control><Alt>i', enabled: true, backend: 'default',
+        id: 'improve-text', name: 'Improve Text', hotkey: '', enabled: true, backend: 'default',
         prompt: "You are an expert editor. Improve the following text for clarity, flow, and impact. Fix awkward phrasing and tighten the language while preserving the original voice and all key information. Return ONLY the improved text, with no explanation or preamble.",
     },
     {
-        id: 'humanize-text', name: 'Remove AI Patterns', hotkey: '<Control><Alt>h', enabled: true, backend: 'default',
+        id: 'humanize-text', name: 'Remove AI Patterns', hotkey: '', enabled: true, backend: 'default',
         prompt: "You are a skilled human editor who specializes in making AI-generated text sound authentically human. Rewrite the following text by doing all of the following:\n\n- Remove sycophantic and formulaic openers: \"Certainly!\", \"Of course!\", \"Great question!\", \"I would be happy to\", \"It is important to note\", \"In conclusion\", \"To summarize\"\n- Cut unnecessary hedging and filler: \"basically\", \"essentially\", \"ultimately\", \"at the end of the day\", \"it goes without saying\"\n- Replace hollow buzzwords: \"leverage\" → use, \"utilize\" → use, \"actionable\" → practical, \"seamless\" → smooth, \"robust\" → strong\n- Vary sentence length and structure so the text flows naturally\n- Convert unnecessary bullet lists back into natural prose\n- Keep every piece of factual content and the core message intact\n\nReturn ONLY the rewritten text, with no explanation or preamble.",
     },
     {
@@ -43,15 +43,15 @@ const DEFAULT_ACTIONS = [
         prompt: "Rewrite the following text to be polite, respectful, and constructive while fully preserving the intended message. Remove any aggression, frustration, or harshness. Return ONLY the rewritten text, with no explanation or preamble.",
     },
     {
-        id: 'reply-message', name: 'Reply to Message / Mail', hotkey: '<Control><Alt>m', enabled: true, backend: 'default',
+        id: 'reply-message', name: 'Reply to Message / Mail', hotkey: '', enabled: true, backend: 'default',
         prompt: "You are an expert communicator. Read the following message or email and write a complete, ready-to-send reply. Match the formality and tone of the original. Be clear, concise, and address every point raised. Do not add a subject line. Output ONLY the reply text — no introduction, no explanation, no markdown.",
     },
     {
-        id: 'translate', name: 'Translate DE ↔ EN', hotkey: '<Control><Alt>t', enabled: true, backend: 'default',
+        id: 'translate', name: 'Translate DE ↔ EN', hotkey: '', enabled: true, backend: 'default',
         prompt: "Detect the language of the following text. If it is German, translate it to English. If it is English, translate it to German. Preserve the tone, formality, and style of the original. Return ONLY the translated text, with no explanation or preamble.",
     },
     {
-        id: 'translate-pl', name: 'Translate DE ↔ PL', hotkey: '<Control><Alt>p', enabled: true, backend: 'default',
+        id: 'translate-pl', name: 'Translate DE ↔ PL', hotkey: '', enabled: true, backend: 'default',
         prompt: "Detect the language of the following text. If it is German, translate it to Polish. If it is Polish, translate it to German. If the text mixes both languages, translate everything to whichever language appears less. Preserve the tone, formality, and style of the original. Return ONLY the translated text, with no explanation or preamble.",
     },
     {
@@ -63,7 +63,7 @@ const DEFAULT_ACTIONS = [
         prompt: "Convert the following text into a clear, well-organized bullet list. Capture every key point. Use the • character for bullets. Return ONLY the bullet list, with no introduction or explanation.",
     },
     {
-        id: 'keywords-to-text', name: 'Write from Keywords', hotkey: '<Control><Alt>k', enabled: true, backend: 'default',
+        id: 'keywords-to-text', name: 'Write from Keywords', hotkey: '', enabled: true, backend: 'default',
         prompt: "You are a skilled writer. The input below is a list of keywords, bullet points, or rough notes. Expand them into a well-structured, coherent, and natural-sounding text. Preserve all key ideas and choose an appropriate length and style based on the content. Return ONLY the written text, with no preamble or explanation.",
     },
     {
@@ -162,19 +162,19 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         const BACKENDS = [
             {
                 id: 'local', label: 'Local API', subtitle: 'Ollama / LM Studio',
-                icon: 'computer-symbolic', cliPathKey: null,
+                icon: 'ollama-symbolic', cliPathKey: null,
                 downloadUrl: 'https://ollama.com',
                 isEnabled: () => settings.get_boolean('local-api-enabled'),
             },
             {
                 id: 'online-api', label: 'Online API', subtitle: 'OpenRouter / OpenAI-compatible',
-                icon: 'network-transmit-receive-symbolic', cliPathKey: null,
+                icon: 'open-webui-symbolic', cliPathKey: null,
                 downloadUrl: 'https://openrouter.ai',
                 isEnabled: () => settings.get_string('online-api-key').trim() !== '',
             },
             {
                 id: 'gemini-cli', label: 'Gemini CLI', subtitle: 'Google Gemini',
-                icon: 'applications-science-symbolic', cliPathKey: 'gemini-cli-path',
+                icon: 'gemini-symbolic', cliPathKey: 'gemini-cli-path',
                 downloadUrl: 'https://github.com/google-gemini/gemini-cli',
                 cliOpts: {
                     title: 'Gemini CLI', description: 'Google Gemini CLI configuration.',
@@ -188,7 +188,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             },
             {
                 id: 'claude-cli', label: 'Claude CLI', subtitle: 'Anthropic Claude Code',
-                icon: 'utilities-terminal-symbolic', cliPathKey: 'claude-cli-path',
+                icon: 'claude-symbolic', cliPathKey: 'claude-cli-path',
                 downloadUrl: 'https://claude.ai/code',
                 cliOpts: {
                     title: 'Claude CLI', description: 'Claude Code CLI configuration.',
@@ -202,7 +202,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             },
             {
                 id: 'copilot-cli', label: 'Copilot CLI', subtitle: 'GitHub Copilot',
-                icon: 'system-users-symbolic', cliPathKey: 'copilot-cli-path',
+                icon: 'copilot-symbolic', cliPathKey: 'copilot-cli-path',
                 downloadUrl: 'https://github.com/github/copilot-cli',
                 cliOpts: {
                     title: 'Copilot CLI', description: 'GitHub Copilot CLI configuration.',
@@ -216,7 +216,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             },
             {
                 id: 'codex-cli', label: 'Codex CLI', subtitle: 'OpenAI Codex',
-                icon: 'accessories-text-editor-symbolic', cliPathKey: 'codex-cli-path',
+                icon: 'codex-symbolic', cliPathKey: 'codex-cli-path',
                 downloadUrl: 'https://developers.openai.com/codex/cli',
                 cliOpts: {
                     title: 'Codex CLI', description: 'OpenAI Codex CLI configuration.',
@@ -228,7 +228,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             },
             {
                 id: 'opencode-cli', label: 'OpenCode CLI', subtitle: 'OpenCode AI',
-                icon: 'network-server-symbolic', cliPathKey: 'opencode-cli-path',
+                icon: 'opencode-symbolic', cliPathKey: 'opencode-cli-path',
                 downloadUrl: 'https://opencode.ai',
                 cliOpts: {
                     title: 'OpenCode CLI', description: 'OpenCode CLI configuration.',
@@ -271,12 +271,14 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 activatable: installed,
             });
 
-            row.add_prefix(new Gtk.Image({
-                icon_name: b.icon, pixel_size: 28,
-                valign: Gtk.Align.CENTER,
-                css_classes: installed ? ['accent'] : ['dim-label'],
-                margin_end: 4,
-            }));
+            const iconPath = `${this.path}/icons/${b.icon}.svg`;
+            const iconImg = new Gtk.Image({ pixel_size: 28, valign: Gtk.Align.CENTER, margin_end: 4 });
+            if (GLib.file_test(iconPath, GLib.FileTest.EXISTS))
+                iconImg.gicon = new Gio.FileIcon({ file: Gio.File.new_for_path(iconPath) });
+            else
+                iconImg.icon_name = b.icon;
+            iconImg.css_classes = installed ? ['accent'] : ['dim-label'];
+            row.add_prefix(iconImg);
 
             const activeLabel = new Gtk.Label({
                 label: '✓ Active', css_classes: ['caption', 'accent'],
@@ -336,7 +338,8 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             backendGroup.add(row);
         });
 
-        settings.connect('changed::backend', refreshCards);
+        const backendChangedId = settings.connect('changed::backend', refreshCards);
+        page.connect('destroy', () => settings.disconnect(backendChangedId));
         return page;
     }
 
@@ -346,7 +349,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             modal: true, default_width: 520, default_height: 420,
             search_enabled: false,
         });
-        const dp = new Adw.PreferencesPage({ title: bDef.label, icon_name: bDef.icon });
+        const dp = new Adw.PreferencesPage({ title: bDef.label, icon_name: 'preferences-system-symbolic' });
         win.add(dp);
 
         if (bDef.id === 'local') {
@@ -536,7 +539,8 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             if (apiKeyRow) apiKeyRow.set_sensitive(found);
         };
 
-        settings.connect(`changed::${pathKey}`, refresh);
+        const pathChangedId = settings.connect(`changed::${pathKey}`, refresh);
+        group.connect('destroy', () => settings.disconnect(pathChangedId));
         refresh();
 
         return group;
@@ -686,7 +690,20 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                         cmd = [customPath, ...fetchCommand.slice(1)];
                     }
                 }
-                const proc = Gio.Subprocess.new(cmd, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+                let proc;
+                try {
+                    proc = Gio.Subprocess.new(cmd, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+                } catch (e) {
+                    console.warn('[LLM Text Pro] Failed to spawn model fetcher:', e.message);
+                    if (fetchBtn) {
+                        fetchBtn.set_icon_name('dialog-error-symbolic');
+                        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                            fetchBtn.set_icon_name('view-refresh-symbolic');
+                            return GLib.SOURCE_REMOVE;
+                        });
+                    }
+                    return;
+                }
                 proc.communicate_utf8_async(null, null, (obj, res) => {
                     try {
                         const [, out, err] = obj.communicate_utf8_finish(res);
@@ -816,6 +833,9 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         Gtk.StyleContext.add_provider_for_display(
             window.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         );
+        window.connect('unrealize', () => {
+            Gtk.StyleContext.remove_provider_for_display(window.get_display(), css);
+        });
 
         this._actionsListGroup = new Adw.PreferencesGroup({ title: 'Text Actions' });
         page.add(this._actionsListGroup);
@@ -1269,8 +1289,12 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
     }
 
     _parseActions(settings) {
-        try { return JSON.parse(settings.get_string('actions-json')); }
-        catch (_) { return []; }
+        try {
+            const data = JSON.parse(settings.get_string('actions-json'));
+            return Array.isArray(data) ? data : [];
+        } catch (_) {
+            return [];
+        }
     }
 
     // ── Page: General ────────────────────────────────────────────────────────
@@ -1297,7 +1321,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         behavGroup.add(makeSwitchRow(
             'Enable Auto-Action on Copy',
-            'Automatically trigger the selected action whenever you copy text to the clipboard.',
+            'Automatically trigger the selected action whenever you copy text to the clipboard. For privacy compliance, this only works when the resolved backend is Local API.',
             settings,
             'auto-action-enabled'
         ));
@@ -1327,6 +1351,37 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             }
         });
         behavGroup.add(autoActionRow);
+
+        // ── Panel Position ──
+        const panelGroup = new Adw.PreferencesGroup({
+            title: 'Panel Position',
+            description: 'Where the extension indicator appears in the top bar.',
+        });
+        page.add(panelGroup);
+
+        const areaMap = ['left', 'center', 'right'];
+        const areaNames = ['Left', 'Center', 'Right'];
+        const areaModeRow = new Adw.ComboRow({
+            title: 'Area',
+            subtitle: 'Which section of the top panel to place the icon in',
+            model: new Gtk.StringList({ strings: areaNames }),
+        });
+        const currentArea = settings.get_string('position-area');
+        const areaIdx = areaMap.indexOf(currentArea);
+        if (areaIdx >= 0) areaModeRow.set_selected(areaIdx);
+        areaModeRow.connect('notify::selected', () => {
+            const sel = areaModeRow.get_selected();
+            if (sel >= 0 && sel < areaMap.length) {
+                settings.set_string('position-area', areaMap[sel]);
+            }
+        });
+        panelGroup.add(areaModeRow);
+
+        panelGroup.add(makeSpinRow(
+            'Position Index',
+            'Lower numbers are further left/top, higher numbers are further right/bottom within the chosen area.',
+            settings, 'position-index', 0, 100
+        ));
 
         // ── Notifications ──
         const notifGroup = new Adw.PreferencesGroup({
@@ -1743,67 +1798,99 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         const version  = this.metadata?.version  ?? '?';
         const shellVer = (this.metadata?.['shell-version'] ?? []).join(', ');
+        const extUrl   = this.metadata?.url      ?? '';
+
+        const _openUrl = (url) => {
+            try { Gtk.show_uri(null, url, GLib.CURRENT_TIME); }
+            catch (e) { console.warn('[LLM Text Pro] Could not open URL:', e.message); }
+        };
 
         // ── App header ───────────────────────────────────────────────────────
         const headerGroup = new Adw.PreferencesGroup();
         page.add(headerGroup);
 
-        const headerRow = new Adw.ActionRow({ activatable: false, selectable: false });
         const headerBox = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
-            spacing: 6,
-            margin_top: 20,
-            margin_bottom: 20,
+            spacing: 8,
+            margin_top: 24,
+            margin_bottom: 12,
             halign: Gtk.Align.CENTER,
             hexpand: true,
         });
+
+        // Logo
+        const logoPath = `${this.path}/icons/logo.svg`;
         const appIcon = new Gtk.Image({
-            icon_name: 'document-edit-symbolic',
-            pixel_size: 72,
-            css_classes: ['accent'],
-            margin_bottom: 6,
+            pixel_size: 96,
+            margin_bottom: 8,
         });
+        if (GLib.file_test(logoPath, GLib.FileTest.EXISTS))
+            appIcon.gicon = new Gio.FileIcon({ file: Gio.File.new_for_path(logoPath) });
+        else
+            appIcon.icon_name = 'document-edit-symbolic';
         headerBox.append(appIcon);
+
+        // Title
         headerBox.append(new Gtk.Label({
             label: '<span size="xx-large" weight="bold">LLM Text Pro</span>',
             use_markup: true,
             halign: Gtk.Align.CENTER,
         }));
-        headerBox.append(new Gtk.Label({
-            label: `Version ${version}  ·  GNOME Shell ${shellVer}`,
-            css_classes: ['dim-label'],
-            halign: Gtk.Align.CENTER,
-        }));
+
+        // Tagline
         headerBox.append(new Gtk.Label({
             label: 'Supercharge your clipboard with AI',
             css_classes: ['title-4'],
             halign: Gtk.Align.CENTER,
+        }));
+
+        // Version + Shell version
+        headerBox.append(new Gtk.Label({
+            label: `Version ${version}  ·  GNOME Shell ${shellVer}`,
+            css_classes: ['dim-label'],
+            halign: Gtk.Align.CENTER,
             margin_top: 4,
         }));
-        headerRow.add_prefix(headerBox);
-        headerGroup.add(headerRow);
+
+        // GitHub link button
+        if (extUrl) {
+            const linkBox = new Gtk.Box({
+                orientation: Gtk.Orientation.HORIZONTAL,
+                spacing: 8,
+                halign: Gtk.Align.CENTER,
+                margin_top: 8,
+            });
+            const githubBtn = new Gtk.Button({
+                label: 'GitHub',
+                css_classes: ['pill'],
+                icon_name: 'emblem-web-symbolic',
+            });
+            githubBtn.connect('clicked', () => _openUrl(extUrl));
+            linkBox.append(githubBtn);
+            headerBox.append(linkBox);
+        }
+
+        // Center wrapper so the whole header is truly centered in the group
+        const centerBox = new Gtk.CenterBox();
+        centerBox.set_center_widget(headerBox);
+        headerGroup.add(centerBox);
 
         // ── How It Works ─────────────────────────────────────────────────────
         const howGroup = new Adw.PreferencesGroup({ title: 'How It Works' });
         page.add(howGroup);
 
         [
-            ['1', 'Copy text to your clipboard',
-             'Select any text in any app and press Ctrl+C'],
-            ['2', 'Trigger an action',
-             'Press a hotkey (e.g. Ctrl+Alt+G) or open the tray menu and click an action'],
-            ['3', 'AI transforms your text',
-             'The processed result is placed back on your clipboard'],
-            ['4', 'Paste the result',
-             'Press Ctrl+V anywhere — or enable Auto-paste to insert it automatically'],
-        ].forEach(([num, title, subtitle]) => {
+            ['edit-copy-symbolic',   'Copy',        'Select any text and press Ctrl+C'],
+            ['input-keyboard-symbolic','Trigger',    'Press a hotkey or pick an action from the tray menu'],
+            ['applications-science-symbolic','Transform','AI processes your text in real time'],
+            ['edit-paste-symbolic',  'Paste',       'Result lands on your clipboard — auto-paste inserts it instantly'],
+        ].forEach(([icon, title, subtitle]) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: false });
-            row.add_prefix(new Gtk.Label({
-                label: num,
-                css_classes: ['title-3', 'accent'],
+            row.add_prefix(new Gtk.Image({
+                icon_name: icon,
+                pixel_size: 18,
+                css_classes: ['accent'],
                 valign: Gtk.Align.CENTER,
-                width_chars: 2,
-                halign: Gtk.Align.CENTER,
             }));
             howGroup.add(row);
         });
@@ -1813,14 +1900,12 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         page.add(featGroup);
 
         [
-            ['document-edit-symbolic',       '16 built-in text actions',    'Grammar, improve, translate, summarise, reply, code refactor, and more'],
-            ['list-add-symbolic',            'Fully customisable actions',   'Add, edit, reorder, or disable any action — with custom AI prompts'],
-            ['computer-symbolic',            '7 AI backends',                'Local, Online API (OpenRouter/OpenAI), Gemini, Claude, Copilot, Codex, and OpenCode CLI'],
-            ['security-medium-symbolic',     'Per-action backend override',  'Send sensitive text only to your local model, not a cloud API'],
-            ['document-open-recent-symbolic','Transformation history',       'Re-copy any past result directly from the tray menu'],
-            ['input-keyboard-symbolic',      'Global hotkeys',               'Trigger any action from anywhere without opening the tray'],
-            ['edit-paste-symbolic',          'Auto-paste',                   'Processed text is pasted back into the active window automatically'],
-            ['media-playlist-repeat-symbolic','Auto-action on copy',          'Automatically trigger any action whenever you copy text to clipboard'],
+            ['document-edit-symbolic',       '16 Built-in Actions',          'Fix grammar, improve tone, translate, summarise, reply, refactor code, and more'],
+            ['list-add-symbolic',            'Custom Actions',               'Add your own prompts, reorder, enable or disable any action'],
+            ['security-medium-symbolic',     'Per-Action Backend Override',  'Send sensitive text to your local model, route light tasks to the cloud'],
+            ['document-open-recent-symbolic','History & Queue',              'Re-copy past results or queue multiple actions'],
+            ['edit-paste-symbolic',          'Auto-Paste',                   'Results are inserted into the active window automatically'],
+            ['media-playlist-repeat-symbolic','Auto-Action on Copy',         'Trigger an action automatically whenever you copy text'],
         ].forEach(([icon, title, subtitle]) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: false });
             row.add_prefix(new Gtk.Image({
@@ -1832,107 +1917,23 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             featGroup.add(row);
         });
 
-        // ── Default Hotkeys ───────────────────────────────────────────────────
-        const hotkeyGroup = new Adw.PreferencesGroup({
-            title: 'Default Hotkeys',
-            description: 'All hotkeys can be changed or removed in the Actions page.',
+        // ── Supported Backends ────────────────────────────────────────────────
+        const backendsGroup = new Adw.PreferencesGroup({
+            title: 'Supported Backends',
+            description: 'Click a backend to open its setup page.',
         });
-        page.add(hotkeyGroup);
+        page.add(backendsGroup);
 
-        [
-            ['Ctrl + Alt + G', 'Fix Grammar'],
-            ['Ctrl + Alt + I', 'Improve Text'],
-            ['Ctrl + Alt + H', 'Remove AI Patterns'],
-            ['Ctrl + Alt + M', 'Reply to Message / Mail'],
-            ['Ctrl + Alt + T', 'Translate DE ↔ EN'],
-            ['Ctrl + Alt + P', 'Translate DE ↔ PL'],
-            ['Ctrl + Alt + K', 'Write from Keywords'],
-        ].forEach(([hotkey, action]) => {
-            const row = new Adw.ActionRow({ title: action, activatable: false });
-            row.add_prefix(new Gtk.Image({
-                icon_name: 'input-keyboard-symbolic',
-                pixel_size: 14,
-                css_classes: ['dim-label'],
-                valign: Gtk.Align.CENTER,
-            }));
-            const badge = new Gtk.Label({
-                label: hotkey,
-                css_classes: ['caption', 'monospace'],
-                valign: Gtk.Align.CENTER,
-            });
-            row.add_suffix(badge);
-            hotkeyGroup.add(row);
-        });
-
-        // ── Backend Setup ─────────────────────────────────────────────────────
-        const setupGroup = new Adw.PreferencesGroup({
-            title: 'Backend Quick Setup',
-            description: 'Click a row to open the project page for installation instructions.',
-        });
-        page.add(setupGroup);
-
-        const _openUrl = (url) => {
-            try { Gtk.show_uri(null, url, GLib.CURRENT_TIME); }
-            catch (e) { console.warn('[LLM Text Pro] Could not open URL:', e.message); }
-        };
-
-        [
-            {
-                title:    'Local — Ollama',
-                subtitle: 'ollama serve  ·  Endpoint: http://127.0.0.1:11434/v1/chat/completions',
-                icon:     'computer-symbolic',
-                url:      'https://ollama.com',
-            },
-            {
-                title:    'Local — LM Studio',
-                subtitle: 'Start the LM Studio app  ·  Endpoint: http://127.0.0.1:1234/v1/chat/completions',
-                icon:     'computer-symbolic',
-                url:      'https://lmstudio.ai',
-            },
-            {
-                title:    'Online API — OpenRouter',
-                subtitle: 'Sign up at openrouter.ai  ·  Works with any OpenAI-compatible cloud API',
-                icon:     'network-transmit-receive-symbolic',
-                url:      'https://openrouter.ai',
-            },
-            {
-                title:    'Gemini CLI',
-                subtitle: 'npm install -g @google/gemini-cli  →  run gemini once to authenticate',
-                icon:     'applications-science-symbolic',
-                url:      'https://github.com/google-gemini/gemini-cli',
-            },
-            {
-                title:    'Claude CLI (Claude Code)',
-                subtitle: 'Install from claude.ai/code  →  run claude once to authenticate',
-                icon:     'applications-science-symbolic',
-                url:      'https://claude.ai/code',
-            },
-            {
-                title:    'Copilot CLI',
-                subtitle: 'Install GitHub Copilot CLI  →  copilot auth login',
-                icon:     'applications-science-symbolic',
-                url:      'https://github.com/github/copilot-cli',
-            },
-            {
-                title:    'Codex CLI',
-                subtitle: 'npm install -g @openai/codex  →  codex login to authenticate',
-                icon:     'applications-science-symbolic',
-                url:      'https://developers.openai.com/codex/cli',
-            },
-            {
-                title:    'OpenCode CLI',
-                subtitle: 'npm install -g opencode  →  opencode providers to configure',
-                icon:     'applications-science-symbolic',
-                url:      'https://opencode.ai',
-            },
-        ].forEach(({ title, subtitle, icon, url }) => {
+        const _makeBackendRow = (id, title, subtitle, url) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: true });
-            row.add_prefix(new Gtk.Image({
-                icon_name: icon,
-                pixel_size: 16,
-                css_classes: ['dim-label'],
-                valign: Gtk.Align.CENTER,
-            }));
+            const iconPath = `${this.path}/icons/${id}-symbolic.svg`;
+            const iconImg = new Gtk.Image({ pixel_size: 22, valign: Gtk.Align.CENTER, margin_end: 6 });
+            if (GLib.file_test(iconPath, GLib.FileTest.EXISTS))
+                iconImg.gicon = new Gio.FileIcon({ file: Gio.File.new_for_path(iconPath) });
+            else
+                iconImg.icon_name = 'preferences-system-symbolic';
+            row.add_prefix(iconImg);
+
             const linkBtn = new Gtk.Button({
                 icon_name: 'go-next-symbolic',
                 valign: Gtk.Align.CENTER,
@@ -1942,26 +1943,30 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             linkBtn.connect('clicked', () => _openUrl(url));
             row.add_suffix(linkBtn);
             row.connect('activated', () => _openUrl(url));
-            setupGroup.add(row);
-        });
+            return row;
+        };
+
+        backendsGroup.add(_makeBackendRow('ollama',       'Local API — Ollama / LM Studio',  'OpenAI-compatible endpoint running on your machine', 'https://ollama.com'));
+        backendsGroup.add(_makeBackendRow('open-webui',   'Online API — OpenRouter / OpenAI','Any cloud OpenAI-compatible endpoint',               'https://openrouter.ai'));
+        backendsGroup.add(_makeBackendRow('gemini',       'Gemini CLI — Google',             'npm install -g @google/gemini-cli',                 'https://github.com/google-gemini/gemini-cli'));
+        backendsGroup.add(_makeBackendRow('claude',       'Claude CLI — Anthropic',          'Install from claude.ai/code',                        'https://claude.ai/code'));
+        backendsGroup.add(_makeBackendRow('copilot',      'Copilot CLI — GitHub',            'Install GitHub Copilot CLI',                         'https://github.com/github/copilot-cli'));
+        backendsGroup.add(_makeBackendRow('codex',        'Codex CLI — OpenAI',              'npm install -g @openai/codex',                       'https://developers.openai.com/codex/cli'));
+        backendsGroup.add(_makeBackendRow('opencode',     'OpenCode CLI',                    'npm install -g opencode',                            'https://opencode.ai'));
 
         // ── Tips ─────────────────────────────────────────────────────────────
         const tipsGroup = new Adw.PreferencesGroup({ title: 'Tips & Tricks' });
         page.add(tipsGroup);
 
         [
-            ['dialog-information-symbolic',
-             'Hotkey format',
-             '<Control><Alt>g  or  <Shift><Super>t — combine any modifier keys'],
-            ['accessories-dictionary-symbolic',
-             'Custom translate pairs',
-             'Edit the translate action prompt to support any language pair you need'],
-            ['security-medium-symbolic',
-             'Privacy-first',
-             'Assign sensitive actions to the Local backend — they never leave your machine'],
-            ['document-open-recent-symbolic',
-             'Re-use results',
-             'Click any history entry in the tray to copy that result back to the clipboard'],
+            ['dialog-information-symbolic', 'Hotkey Format',
+             '<Control><Alt>g  or  <Shift><Super>t — combine modifiers freely'],
+            ['accessories-dictionary-symbolic', 'Custom Translations',
+             'Edit the translate action prompt for any language pair'],
+            ['security-medium-symbolic', 'Privacy First',
+             'Assign sensitive actions to the Local backend — data never leaves your machine'],
+            ['document-open-recent-symbolic', 'Re-use Results',
+             'Click any history entry in the tray menu to copy it back'],
         ].forEach(([icon, title, subtitle]) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: false });
             row.add_prefix(new Gtk.Image({
@@ -1974,13 +1979,13 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         });
 
         // ── Credits ───────────────────────────────────────────────────────────
-        const creditsGroup = new Adw.PreferencesGroup({ title: 'Credits' });
+        const creditsGroup = new Adw.PreferencesGroup({ title: 'Credits & License' });
         page.add(creditsGroup);
 
         [
-            ['avatar-default-symbolic',  'Author',    'David Sokolowski'],
-            ['document-edit-symbolic',   'Based On',  'LLM Text Modifier by Rishabh Bajpai'],
-            ['text-x-generic-symbolic',  'License',   'GNU General Public License v3.0 (GPLv3)'],
+            ['avatar-default-symbolic',   'Maintainer', 'Independent project'],
+            ['document-edit-symbolic',    'Based On',   'LLM Text Modifier by Rishabh Bajpai'],
+            ['text-x-generic-symbolic',   'License',    'GNU General Public License v3.0 (GPLv3)'],
         ].forEach(([icon, title, subtitle]) => {
             const row = new Adw.ActionRow({ title, subtitle, activatable: false });
             row.add_prefix(new Gtk.Image({

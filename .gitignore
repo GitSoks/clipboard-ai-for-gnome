@@ -1,0 +1,13 @@
+# AI assistant workspace state
+.claude/
+
+# Generated GNOME schema cache
+schemas/gschemas.compiled
+
+# Packaged extension artifacts
+*.zip
+
+# Editor / OS noise
+*~
+*.swp
+.DS_Store

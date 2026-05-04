@@ -82,9 +82,11 @@ class TextProIndicator extends PanelMenu.Button {
 
         const box = new St.BoxLayout({ vertical: false, style_class: 'panel-status-indicators-box' });
 
-        // Main panel icon — changes icon_name + color class based on state
+        // Main panel icon — changes gicon/icon_name + color class based on state
         this._panelIcon = new St.Icon({
+            gicon: extension._customGicons?.['ai-usage-bar-symbolic'] || null,
             icon_name: 'document-edit-symbolic',
+            icon_size: 16,
             style_class: 'system-status-icon llm-panel-icon',
         });
         box.add_child(this._panelIcon);
@@ -112,7 +114,7 @@ class TextProIndicator extends PanelMenu.Button {
 
         this._setupQuotaTimer();
 
-        this._ext._settings.connect('changed::auto-check-quota', () => {
+        this._quotaSettingsId = this._ext._settings.connect('changed::auto-check-quota', () => {
             this._setupQuotaTimer();
         });
     }
@@ -342,13 +344,13 @@ class TextProIndicator extends PanelMenu.Button {
         let current = s.get_string('backend');
 
         const backends = [
-            { id: 'local',       name: 'Local',   cliPath: null,                                      isEnabled: () => s.get_boolean('local-api-enabled') },
-            { id: 'online-api',  name: 'Online',  cliPath: null,                                      isEnabled: () => s.get_string('online-api-key').trim() !== '' },
-            { id: 'gemini-cli',  name: 'Gemini',  cliPath: s.get_string('gemini-cli-path') },
-            { id: 'claude-cli',  name: 'Claude',  cliPath: s.get_string('claude-cli-path') },
-            { id: 'copilot-cli', name: 'Copilot', cliPath: s.get_string('copilot-cli-path') },
-            { id: 'codex-cli',   name: 'Codex',   cliPath: s.get_string('codex-cli-path') },
-            { id: 'opencode-cli',name: 'OpenCode',cliPath: s.get_string('opencode-cli-path') },
+            { id: 'local',       name: 'Local',   icon: 'ollama-symbolic',       cliPath: null,                                      isEnabled: () => s.get_boolean('local-api-enabled') },
+            { id: 'online-api',  name: 'Online',  icon: 'open-webui-symbolic',   cliPath: null,                                      isEnabled: () => s.get_string('online-api-key').trim() !== '' },
+            { id: 'gemini-cli',  name: 'Gemini',  icon: 'gemini-symbolic',       cliPath: s.get_string('gemini-cli-path') },
+            { id: 'claude-cli',  name: 'Claude',  icon: 'claude-symbolic',       cliPath: s.get_string('claude-cli-path') },
+            { id: 'copilot-cli', name: 'Copilot', icon: 'copilot-symbolic',      cliPath: s.get_string('copilot-cli-path') },
+            { id: 'codex-cli',   name: 'Codex',   icon: 'codex-symbolic',        cliPath: s.get_string('codex-cli-path') },
+            { id: 'opencode-cli',name: 'OpenCode',icon: 'opencode-symbolic',     cliPath: s.get_string('opencode-cli-path') },
         ];
 
         // Auto-switch if the current backend is not available
@@ -382,7 +384,6 @@ class TextProIndicator extends PanelMenu.Button {
             }
 
             const btn = new St.Button({
-                label: b.name,
                 style_class: b.id === current
                     ? 'llm-backend-btn llm-backend-btn-active'
                     : 'llm-backend-btn',
@@ -392,6 +393,33 @@ class TextProIndicator extends PanelMenu.Button {
                 x_align: Clutter.ActorAlign.FILL,
                 y_align: Clutter.ActorAlign.CENTER,
             });
+
+            // Icon + label box
+            const btnBox = new St.BoxLayout({
+                vertical: false,
+                x_align: Clutter.ActorAlign.CENTER,
+                y_align: Clutter.ActorAlign.CENTER,
+                x_expand: true,
+            });
+
+            const gicon = this._ext._customGicons?.[b.icon];
+            const icon = new St.Icon({
+                gicon: gicon || null,
+                icon_name: gicon ? null : b.icon,
+                icon_size: 14,
+                y_align: Clutter.ActorAlign.CENTER,
+                style: 'margin-right: 5px;',
+            });
+            btnBox.add_child(icon);
+
+            const lbl = new St.Label({
+                text: b.name,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            btnBox.add_child(lbl);
+
+            btn.set_child(btnBox);
+
             btn.connect('clicked', () => {
                 this._ext._settings.set_string('backend', b.id);
                 this._rebuildBackendMenu();
@@ -403,6 +431,7 @@ class TextProIndicator extends PanelMenu.Button {
     }
 
     async _checkQuota(silent = false) {
+        if (this._isDestroyed) return;
         const backend = this._ext._settings.get_string('backend');
 
         // CLI backends: show today's accumulated usage — no live call to avoid cost
@@ -425,8 +454,10 @@ class TextProIndicator extends PanelMenu.Button {
                 url += 'models';
             }
 
-            const session = new Soup.Session();
+            const session = this._ext._httpSession || new Soup.Session();
+            if (!this._ext._httpSession) session.timeout = 8;
             const msg = Soup.Message.new('GET', url);
+            if (!msg) throw new Error('Invalid API endpoint URL');
 
             const apiKey = this._ext._settings.get_string('api-key');
             if (apiKey && apiKey !== 'random' && apiKey.trim() !== '') {
@@ -440,6 +471,7 @@ class TextProIndicator extends PanelMenu.Button {
                 });
             });
 
+            if (this._isDestroyed) return;
             if (msg.get_status() !== 200) throw new Error(`HTTP ${msg.get_status()}`);
 
             const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
@@ -461,6 +493,7 @@ class TextProIndicator extends PanelMenu.Button {
             }
             if (!silent) this.setDone('Local API OK');
         } catch (e) {
+            if (this._isDestroyed) return;
             this._quotaItem.label.text = 'Local AI: Offline / unreachable';
             if (!silent) this.setError('Local API offline');
         }
@@ -753,6 +786,7 @@ class TextProIndicator extends PanelMenu.Button {
     setDone(actionName) {
         this._stopSpinner();
         this._iconLabel.visible = false;
+        this._panelIcon.gicon = null;
         this._panelIcon.icon_name = 'object-select-symbolic';
         this._panelIcon.remove_style_class_name('llm-icon-error');
         this._panelIcon.add_style_class_name('llm-icon-done');
@@ -764,6 +798,7 @@ class TextProIndicator extends PanelMenu.Button {
     setError(message) {
         this._stopSpinner();
         this._iconLabel.visible = false;
+        this._panelIcon.gicon = null;
         this._panelIcon.icon_name = 'dialog-error-symbolic';
         this._panelIcon.remove_style_class_name('llm-icon-done');
         this._panelIcon.add_style_class_name('llm-icon-error');
@@ -775,6 +810,7 @@ class TextProIndicator extends PanelMenu.Button {
     setIdle() {
         this._stopSpinner();
         this._iconLabel.visible = false;
+        this._panelIcon.gicon = this._ext._customGicons?.['ai-usage-bar-symbolic'] || null;
         this._panelIcon.icon_name = 'document-edit-symbolic';
         this._panelIcon.remove_style_class_name('llm-icon-done');
         this._panelIcon.remove_style_class_name('llm-icon-error');
@@ -838,11 +874,16 @@ class TextProIndicator extends PanelMenu.Button {
     // ── Cleanup ──────────────────────────────────────────────────────────────
 
     destroy() {
+        this._isDestroyed = true;
         this._stopSpinner();
         this._cancelResetTimer();
         if (this._quotaTimer !== null) {
             GLib.source_remove(this._quotaTimer);
             this._quotaTimer = null;
+        }
+        if (this._quotaSettingsId) {
+            this._ext._settings?.disconnect(this._quotaSettingsId);
+            this._quotaSettingsId = null;
         }
         super.destroy();
     }
@@ -871,6 +912,8 @@ export default class LLMTextProExtension extends Extension {
         this._clipboardSignalId  = null;
         this._clipboardPollTimer = null;
         this._lastClipboardText  = null;
+        this._queueTimer         = null;
+        this._isEnabled          = false;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -895,14 +938,17 @@ export default class LLMTextProExtension extends Extension {
                 const [ok, bytes] = GLib.file_get_contents(oldPath);
                 if (ok) {
                     const data = JSON.parse(new TextDecoder().decode(bytes));
-                    GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
-                    GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(data)));
-                    return data;
+                    if (Array.isArray(data)) {
+                        GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+                        GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(data)));
+                        return data;
+                    }
                 }
             }
             const [ok, bytes] = GLib.file_get_contents(path);
             if (!ok) return [];
-            return JSON.parse(new TextDecoder().decode(bytes));
+            const data = JSON.parse(new TextDecoder().decode(bytes));
+            return Array.isArray(data) ? data : [];
         } catch (_) {
             return [];
         }
@@ -1017,13 +1063,32 @@ export default class LLMTextProExtension extends Extension {
     }
 
     enable() {
+        this._isEnabled   = true;
+
+        // Load bundled brand icons as Gio.FileIcon so they display in the panel
+        const iconsDir = this.path + '/icons';
+        this._customGicons = {};
+        for (const name of ['ai-usage-bar-symbolic', 'claude-symbolic', 'gemini-symbolic',
+                            'codex-symbolic', 'copilot-symbolic', 'opencode-symbolic',
+                            'ollama-symbolic', 'open-webui-symbolic']) {
+            const p = `${iconsDir}/${name}.svg`;
+            if (GLib.file_test(p, GLib.FileTest.EXISTS))
+                this._customGicons[name] = new Gio.FileIcon({ file: Gio.File.new_for_path(p) });
+        }
+
         this._settings    = this.getSettings();
         this._httpSession = new Soup.Session();
+        this._httpSession.timeout = 30;
         this._history     = this._loadHistory();
         this._usage       = this._loadUsage();
 
         this._indicator = new TextProIndicator(this);
-        Main.panel.addToStatusArea(this.uuid, this._indicator);
+        this._repositionIndicator();
+
+        this._positionSignalIds = [
+            this._settings.connect('changed::position-area', () => this._repositionIndicator()),
+            this._settings.connect('changed::position-index', () => this._repositionIndicator()),
+        ];
 
         this._displaySignalId = global.display.connect(
             'accelerator-activated',
@@ -1042,7 +1107,37 @@ export default class LLMTextProExtension extends Extension {
         );
     }
 
+    _repositionIndicator() {
+        if (!this._indicator || !this._settings) return;
+
+        const area = this._settings.get_string('position-area');
+        const index = this._settings.get_int('position-index');
+
+        const container = this._indicator.container;
+        const parent = container.get_parent();
+        if (parent) {
+            parent.remove_child(container);
+        }
+        const targetBox = area === 'left' ? Main.panel._leftBox :
+                          area === 'center' ? Main.panel._centerBox :
+                          Main.panel._rightBox;
+        if (!targetBox) return;
+        targetBox.insert_child_at_index(container, index);
+    }
+
     disable() {
+        this._isEnabled = false;
+
+        if (this._queueTimer) {
+            GLib.source_remove(this._queueTimer);
+            this._queueTimer = null;
+        }
+
+        if (this._positionSignalIds) {
+            this._positionSignalIds.forEach(id => this._settings?.disconnect(id));
+            this._positionSignalIds = null;
+        }
+
         if (this._settingsSignalId) {
             this._settings?.disconnect(this._settingsSignalId);
             this._settingsSignalId = null;
@@ -1059,21 +1154,30 @@ export default class LLMTextProExtension extends Extension {
         this._indicator?.destroy();
         this._indicator = null;
 
-        this._httpSession?.abort();
-        this._httpSession = null;
+        // Cancel any in-flight HTTP requests before dropping the session
+        if (this._lmsPollSession) {
+            try { this._lmsPollSession.abort(); } catch (_) {}
+            this._lmsPollSession = null;
+        }
+        if (this._httpSession) {
+            try { this._httpSession.abort(); } catch (_) {}
+            this._httpSession = null;
+        }
 
         this._settings          = null;
         this._history           = [];
         this._usage             = null;
         this._isProcessing      = false;
         this._currentActionName = null;
+        this._actionQueue       = [];
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
 
     _getActions() {
         try {
-            return JSON.parse(this._settings.get_string('actions-json'));
+            const data = JSON.parse(this._settings.get_string('actions-json'));
+            return Array.isArray(data) ? data : [];
         } catch (_e) {
             return [];
         }
@@ -1152,8 +1256,12 @@ export default class LLMTextProExtension extends Extension {
     }
 
     _pollClipboardForChanges() {
+        if (this._clipboardReading) return;
+        this._clipboardReading = true;
         const clipboard = St.Clipboard.get_default();
         clipboard.get_text(St.ClipboardType.CLIPBOARD, (_clip, text) => {
+            this._clipboardReading = false;
+            if (!this._settings) return;
             if (!text || !text.trim()) return;
             if (text === this._lastClipboardText) return;
 
@@ -1168,10 +1276,6 @@ export default class LLMTextProExtension extends Extension {
     }
 
     _teardownClipboardListener() {
-        if (this._clipboardSignalId) {
-            global.display.get_selection().disconnect(this._clipboardSignalId);
-            this._clipboardSignalId = null;
-        }
         if (this._clipboardPollTimer) {
             GLib.source_remove(this._clipboardPollTimer);
             this._clipboardPollTimer = null;
@@ -1200,6 +1304,15 @@ export default class LLMTextProExtension extends Extension {
         const action = this._getActions().find(a => a.id === actionId);
         if (!action || !action.enabled) return;
 
+        // e.g.o policy: automatic clipboard sharing is only allowed with local backends
+        const globalBackend = this._settings.get_string('backend');
+        const resolvedBackend = (action.backend && action.backend !== 'default')
+            ? action.backend
+            : globalBackend;
+        if (resolvedBackend !== 'local') {
+            return;
+        }
+
         // Debounce: some apps fire multiple clipboard events for one copy
         if (this._clipboardDebounceTimer) {
             GLib.source_remove(this._clipboardDebounceTimer);
@@ -1209,7 +1322,7 @@ export default class LLMTextProExtension extends Extension {
         this._clipboardDebounceTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
             this._clipboardDebounceTimer = null;
             // Double-check state hasn't changed during debounce
-            if (!this._isProcessing && this._settings.get_boolean('auto-action-enabled')) {
+            if (!this._isProcessing && this._isEnabled && this._settings.get_boolean('auto-action-enabled')) {
                 this._processClipboard(action);
             }
             return GLib.SOURCE_REMOVE;
@@ -1228,6 +1341,7 @@ export default class LLMTextProExtension extends Extension {
             }
             return;
         }
+        if (!this._isEnabled) return;
         this._isProcessing      = true;
         this._currentActionName = action.name;
         this._indicator?.setProcessing(action.name);
@@ -1261,6 +1375,7 @@ export default class LLMTextProExtension extends Extension {
 
             const startTime  = Date.now();
             const result     = await this._callBackend(backend, action.prompt, inputText);
+            if (!this._isEnabled) return;
             const durationMs = Date.now() - startTime;
 
             const resultText = (result && typeof result === 'object') ? result.text : String(result);
@@ -1323,10 +1438,13 @@ export default class LLMTextProExtension extends Extension {
             this._isProcessing      = false;
             this._currentActionName = null;
 
-            if (this._actionQueue.length > 0) {
+            if (this._actionQueue.length > 0 && this._isEnabled) {
                 const nextAction = this._actionQueue.shift();
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-                    this._processClipboard(nextAction);
+                this._queueTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                    this._queueTimer = null;
+                    if (this._isEnabled) {
+                        this._processClipboard(nextAction);
+                    }
                     return GLib.SOURCE_REMOVE;
                 });
             }
@@ -1358,7 +1476,7 @@ export default class LLMTextProExtension extends Extension {
     // ── Local OpenAI-compatible API ──────────────────────────────────────────
 
     async _callLocalAPI(prompt, text, isRetry = false) {
-        if (!this._httpSession) throw new Error('HTTP session not initialised.');
+        if (!this._httpSession || !this._settings) throw new Error('Extension is disabled.');
 
         const endpoint = this._settings.get_string('api-endpoint');
         const model    = this._settings.get_string('local-model');
@@ -1373,15 +1491,17 @@ export default class LLMTextProExtension extends Extension {
             stream: false,
         });
 
-        const message = Soup.Message.new('POST', endpoint);
-        message.request_headers.append('Authorization', `Bearer ${apiKey}`);
-        message.set_request_body_from_bytes(
-            'application/json',
-            new TextEncoder().encode(payload)
-        );
-
         let bytes;
+        let message;
         try {
+            message = Soup.Message.new('POST', endpoint);
+            if (!message) throw new Error('Invalid API endpoint URL');
+            message.request_headers.append('Authorization', `Bearer ${apiKey}`);
+            message.set_request_body_from_bytes(
+                'application/json',
+                new TextEncoder().encode(payload)
+            );
+
             bytes = await new Promise((resolve, reject) => {
                 this._httpSession.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (s, res) => {
                     try { resolve(s.send_and_read_finish(res)); }
@@ -1389,14 +1509,14 @@ export default class LLMTextProExtension extends Extension {
                 });
             });
         } catch (e) {
-            if (!isRetry && this._settings.get_boolean('auto-start-lms')) {
+            if (!isRetry && this._settings?.get_boolean('auto-start-lms')) {
                 return await this._autoStartLMSAndRetry(prompt, text);
             }
             throw e;
         }
 
         if (message.get_status() !== 200) {
-            if (message.get_status() === 0 && !isRetry && this._settings.get_boolean('auto-start-lms')) {
+            if (message.get_status() === 0 && !isRetry && this._settings?.get_boolean('auto-start-lms')) {
                 return await this._autoStartLMSAndRetry(prompt, text);
             }
             throw new Error(`API error ${message.get_status()}: ${message.get_reason_phrase()}`);
@@ -1415,7 +1535,7 @@ export default class LLMTextProExtension extends Extension {
     // ── Online OpenAI-compatible API (OpenRouter etc.) ───────────────────────
 
     async _callOnlineAPI(prompt, text) {
-        if (!this._httpSession) throw new Error('HTTP session not initialised.');
+        if (!this._httpSession || !this._settings) throw new Error('Extension is disabled.');
 
         const endpoint = this._settings.get_string('online-api-endpoint');
         const model    = this._settings.get_string('online-api-model');
@@ -1433,12 +1553,18 @@ export default class LLMTextProExtension extends Extension {
             stream: false,
         });
 
-        const message = Soup.Message.new('POST', endpoint);
-        message.request_headers.append('Authorization', `Bearer ${apiKey}`);
-        message.set_request_body_from_bytes(
-            'application/json',
-            new TextEncoder().encode(payload)
-        );
+        let message;
+        try {
+            message = Soup.Message.new('POST', endpoint);
+            if (!message) throw new Error('Invalid Online API endpoint URL');
+            message.request_headers.append('Authorization', `Bearer ${apiKey}`);
+            message.set_request_body_from_bytes(
+                'application/json',
+                new TextEncoder().encode(payload)
+            );
+        } catch (e) {
+            throw new Error(`Failed to prepare Online API request: ${e.message}`);
+        }
 
         const bytes = await new Promise((resolve, reject) => {
             this._httpSession.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (s, res) => {
@@ -1487,11 +1613,26 @@ export default class LLMTextProExtension extends Extension {
         const lmsPaths = [GLib.get_home_dir() + '/.lmstudio/bin/lms', 'lms'];
         const POLL_MS = 2000;
         const MAX_POLLS = 45;
+        const sess = new Soup.Session();
+        sess.timeout = 2;
+        this._lmsPollSession = sess;
 
         for (let poll = 1; poll <= MAX_POLLS; poll++) {
+            if (!this._isEnabled) {
+                try { sess.abort(); } catch (_) {}
+                this._lmsPollSession = null;
+                throw new Error('Extension disabled during LM Studio startup.');
+            }
+
             await new Promise(r => {
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_MS, () => { r(); return GLib.SOURCE_REMOVE; });
             });
+
+            if (!this._isEnabled) {
+                try { sess.abort(); } catch (_) {}
+                this._lmsPollSession = null;
+                throw new Error('Extension disabled during LM Studio startup.');
+            }
 
             // Every 5th poll (~10 s) try 'lms server start'; ignore errors if daemon not ready yet
             if (poll % 5 === 0) {
@@ -1509,22 +1650,28 @@ export default class LLMTextProExtension extends Extension {
 
             // Check if API is responding
             try {
-                const sess = new Soup.Session();
-                sess.timeout = 2;
                 const msg = Soup.Message.new('GET', modelsUrl);
+                if (!msg) continue;
                 await new Promise((resolve, reject) => {
                     sess.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (s, res) => {
                         try { resolve(s.send_and_read_finish(res)); }
                         catch (e) { reject(e); }
                     });
                 });
+                if (!this._isEnabled) {
+                    try { sess.abort(); } catch (_) {}
+                    this._lmsPollSession = null;
+                    throw new Error('Extension disabled during LM Studio startup.');
+                }
                 if (msg.get_status() === 200) {
                     Main.notify('LLM Text Pro', 'LM Studio ready — processing…');
+                    this._lmsPollSession = null;
                     return this._callLocalAPI(prompt, text, true);
                 }
             } catch (_e) { /* not ready yet */ }
         }
 
+        this._lmsPollSession = null;
         throw new Error('LM Studio did not become ready within 90 s.');
     }
 
@@ -1550,6 +1697,7 @@ export default class LLMTextProExtension extends Extension {
     // ── CLI backends (Gemini / Claude / Copilot / Codex) ────────────────────
 
     async _callCLI(cliType, prompt, text) {
+        if (!this._settings) throw new Error('Extension is disabled.');
         let cliPath, args;
         const fullInput = `${prompt}\n\n${text}`;
         let codexModelLabel = 'Codex Default';
@@ -1607,7 +1755,7 @@ export default class LLMTextProExtension extends Extension {
             const apiKey = this._settings.get_string('codex-api-key');
             if (apiKey && apiKey.trim() !== '')
                 launcher.setenv('CODEX_API_KEY', apiKey.trim(), true);
-            proc = launcher.spawnv(args, null);
+            proc = launcher.spawnv(args);
         } else {
             proc = new Gio.Subprocess({ argv: args, flags: subFlags });
             proc.init(null);
@@ -1683,7 +1831,8 @@ export default class LLMTextProExtension extends Extension {
                                 } catch (_e) {}
                             }
                         }
-                        resolve({ text: textResult.trim(), info: `Model: ${this._settings.get_string('opencode-model') || 'OpenCode Default'}`, usage: usageData });
+                        const modelLabel = this._settings ? (this._settings.get_string('opencode-model') || 'OpenCode Default') : 'OpenCode Default';
+                        resolve({ text: textResult.trim(), info: `Model: ${modelLabel}`, usage: usageData });
                         return;
                     }
 
@@ -1789,9 +1938,13 @@ export default class LLMTextProExtension extends Extension {
 
     _simulatePaste() {
         try {
-            const seat = Clutter.get_default_backend().get_default_seat();
+            const backend = Clutter.get_default_backend();
+            if (!backend) return;
+            const seat = backend.get_default_seat();
+            if (!seat) return;
             const vkbd = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
-            const t    = global.get_current_time();
+            if (!vkbd) return;
+            const t = global.get_current_time();
 
             vkbd.notify_keyval(t,     Clutter.KEY_Control_L, Clutter.KeyState.PRESSED);
             vkbd.notify_keyval(t,     Clutter.KEY_v,         Clutter.KeyState.PRESSED);

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="penGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#3b82f6"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="none" stroke="url(#penGrad)" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Pen body -->
+  <path d="M18 46 L38 16 L42 18 L22 48 Z" fill="url(#penGrad)"/>
+  <path d="M38 16 L40 13 L44 15 L42 18 Z" fill="#4f46e5"/>
+  <path d="M18 46 L15 49 L19 50 L22 48 Z" fill="#312e81"/>
+  
+  <!-- AI/Neural nodes coming from pen tip -->
+  <circle cx="14" cy="52" r="2.5" fill="url(#nodeGrad)"/>
+  <circle cx="22" cy="56" r="2" fill="url(#nodeGrad)"/>
+  <circle cx="30" cy="53" r="1.8" fill="url(#nodeGrad)"/>
+  <circle cx="36" cy="58" r="1.5" fill="url(#nodeGrad)"/>
+  <circle cx="10" cy="58" r="1.5" fill="url(#nodeGrad)"/>
+  
+  <!-- Connection lines between nodes -->
+  <path d="M14 52 L22 56 M22 56 L30 53 M14 52 L10 58 M30 53 L36 58" 
+        stroke="url(#nodeGrad)" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
+  
+  <!-- Text lines being generated -->
+  <path d="M46 22 L56 22 M48 26 L58 26 M44 30 L54 30" 
+        stroke="url(#nodeGrad)" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+</svg>
