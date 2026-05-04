@@ -26,6 +26,14 @@
 
 It is designed for real desktop use: quick grammar fixes, translation, tone adjustment, drafting replies, summarising long text, and even code explanation or refactoring.
 
+## Screenshot
+
+<p align="center">
+  <img src="docs/screenshots/screenshot_taskbar_menu.png" alt="Clipboard AI for GNOME panel menu screenshot" width="760">
+</p>
+
+<p align="center"><em>Tray menu with backend switcher, actions, history, and hotkeys.</em></p>
+
 ## Highlights
 
 - **7 AI backends**: Local API, Online API, Gemini CLI, Claude CLI, Copilot CLI, Codex CLI, and OpenCode CLI.
