@@ -1,4 +1,4 @@
-/* LLM Text Pro — stylesheet.css */
+/* Clipboard AI for GNOME — stylesheet.css */
 
 /* ── Panel indicator ─────────────────────────────────────────────────────── */
 
@@ -17,7 +17,7 @@
 }
 
 /* Spinner label (only visible during processing) */
-.llm-text-pro-icon {
+.clipboard-ai-gnome-icon {
     font-size: 13px;
     padding: 0 2px;
 }

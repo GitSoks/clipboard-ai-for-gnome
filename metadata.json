@@ -1,13 +1,13 @@
 {
-  "name": "LLM Text Pro",
+  "name": "Clipboard AI for GNOME",
   "description": "✨ Supercharge your clipboard with AI!\n\nThis extension accesses your clipboard to fix grammar, improve text, translate between languages, or run any custom text action — all via a user-assigned hotkey or automatically on copy (local backend only). Supports 7 AI backends: Local API (Ollama, LM Studio), Online API (OpenRouter, OpenAI, Groq, Mistral), Gemini CLI, Claude CLI, Copilot CLI, Codex CLI, and OpenCode CLI.\n\n✨ Features:\n• Animated tray icon with live status\n• 7 AI backends with per-action override\n• Fully customisable actions — add, remove, enable/disable, change prompts & shortcuts\n• Auto-action on copy (Local API only) — trigger actions automatically when you copy text\n• Auto-paste result back into the active window\n• Dynamic model fetching from Local API and OpenCode CLI\n• Per-backend usage tracking (tokens, cost, call count)\n• Transformation history with action queueing",
-  "uuid": "llm-text-pro@sokolowski.tech",
+  "uuid": "clipboard-ai-for-gnome@sokolowski.tech",
   "shell-version": [
     "48",
     "49",
     "50"
   ],
   "version": 11,
-  "settings-schema": "org.gnome.shell.extensions.llm-text-pro",
-  "url": "https://github.com/GitSoks/llm-text-pro"
+  "settings-schema": "org.gnome.shell.extensions.clipboard-ai-for-gnome",
+  "url": "https://github.com/GitSoks/clipboard-ai-for-gnome"
 }

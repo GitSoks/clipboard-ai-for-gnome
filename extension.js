@@ -1,5 +1,5 @@
 /**
- * LLM Text Pro — extension.js
+ * Clipboard AI for GNOME — extension.js
  * Enhanced text-modifier with animated tray icon, multiple AI backends,
  * dynamic hotkeys, auto-paste, history, and fully customisable actions.
  */
@@ -16,6 +16,10 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import Soup from 'gi://Soup';
 import Clutter from 'gi://Clutter';
+
+const EXTENSION_NAME = 'Clipboard AI for GNOME';
+const CURRENT_UUID = 'clipboard-ai-for-gnome@sokolowski.tech';
+const LOG_PREFIX = `[${EXTENSION_NAME}]`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -73,11 +77,11 @@ function cliIsInstalled(cliPath) {
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-const TextProIndicator = GObject.registerClass(
-class TextProIndicator extends PanelMenu.Button {
+const ClipboardAIIndicator = GObject.registerClass(
+class ClipboardAIIndicator extends PanelMenu.Button {
 
     _init(extension) {
-        super._init(0.0, 'LLM Text Pro');
+        super._init(0.0, EXTENSION_NAME);
         this._ext = extension;
 
         const box = new St.BoxLayout({ vertical: false, style_class: 'panel-status-indicators-box' });
@@ -94,7 +98,7 @@ class TextProIndicator extends PanelMenu.Button {
         // Spinner label — visible ONLY during processing
         this._iconLabel = new St.Label({
             text: SPINNER_FRAMES[0],
-            style_class: 'llm-text-pro@sokolowski.tech-icon llm-processing',
+            style_class: 'clipboard-ai-gnome-icon llm-processing',
             y_align: Clutter.ActorAlign.CENTER,
             visible: false,
         });
@@ -186,7 +190,7 @@ class TextProIndicator extends PanelMenu.Button {
             const clipboard = St.Clipboard.get_default();
             this._ext._suppressClipboardAutoAction();
             clipboard.set_text(St.ClipboardType.CLIPBOARD, this._lastResultFull);
-            Main.notify('LLM Text Pro', 'Result copied to clipboard.');
+            Main.notify(EXTENSION_NAME, 'Result copied to clipboard.');
         });
         this.menu.addMenuItem(this._resultPreviewItem);
 
@@ -757,7 +761,7 @@ class TextProIndicator extends PanelMenu.Button {
                     });
                 }
                 const wc = entry.resultWords ?? _wc(entry.result);
-                Main.notify('LLM Text Pro', `Copied "${entry.actionName}" result — ${wc} words`);
+                Main.notify(EXTENSION_NAME, `Copied "${entry.actionName}" result — ${wc} words`);
             });
             this._historyMenu.menu.addMenuItem(item);
         });
@@ -893,7 +897,7 @@ class TextProIndicator extends PanelMenu.Button {
 // Main Extension
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default class LLMTextProExtension extends Extension {
+export default class ClipboardAIForGNOMEExtension extends Extension {
 
     constructor(metadata) {
         super(metadata);
@@ -918,33 +922,16 @@ export default class LLMTextProExtension extends Extension {
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
-    _historyFilePath() {
+    _historyFilePath(uuid = CURRENT_UUID) {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'llm-text-pro@sokolowski.tech', 'history.json',
+            uuid, 'history.json',
         ]);
     }
 
     _loadHistory() {
         try {
             const path = this._historyFilePath();
-            // Migrate from old path inside the extension directory (wiped on updates)
-            const oldPath = GLib.build_filenamev([
-                GLib.get_user_data_dir(),
-                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.tech', 'history.json',
-            ]);
-            if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
-                 GLib.file_test(oldPath, GLib.FileTest.EXISTS)) {
-                const [ok, bytes] = GLib.file_get_contents(oldPath);
-                if (ok) {
-                    const data = JSON.parse(new TextDecoder().decode(bytes));
-                    if (Array.isArray(data)) {
-                        GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
-                        GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(data)));
-                        return data;
-                    }
-                }
-            }
             const [ok, bytes] = GLib.file_get_contents(path);
             if (!ok) return [];
             const data = JSON.parse(new TextDecoder().decode(bytes));
@@ -960,16 +947,16 @@ export default class LLMTextProExtension extends Extension {
             GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
             GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(this._history)));
         } catch (e) {
-            console.warn('[LLM Text Pro] Could not save history:', e.message);
+            console.warn(`${LOG_PREFIX} Could not save history:`, e.message);
         }
     }
 
     // ── Usage tracking ───────────────────────────────────────────────────────
 
-    _usageFilePath() {
+    _usageFilePath(uuid = CURRENT_UUID) {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'llm-text-pro@sokolowski.tech', 'usage.json',
+            uuid, 'usage.json',
         ]);
     }
 
@@ -987,23 +974,6 @@ export default class LLMTextProExtension extends Extension {
     _loadUsage() {
         try {
             const path = this._usageFilePath();
-            // Migrate from old path inside the extension directory (wiped on updates)
-            const oldPath = GLib.build_filenamev([
-                GLib.get_user_data_dir(),
-                'gnome-shell', 'extensions', 'llm-text-pro@sokolowski.tech', 'usage.json',
-            ]);
-            if (!GLib.file_test(path, GLib.FileTest.EXISTS) &&
-                 GLib.file_test(oldPath, GLib.FileTest.EXISTS)) {
-                const [ok, bytes] = GLib.file_get_contents(oldPath);
-                if (ok) {
-                    const data  = JSON.parse(new TextDecoder().decode(bytes));
-                    const today = new Date().toISOString().slice(0, 10);
-                    const result = data.date === today ? data : this._emptyUsage();
-                    GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
-                    GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(result)));
-                    return result;
-                }
-            }
             const [ok, bytes] = GLib.file_get_contents(path);
             if (!ok) return this._emptyUsage();
             const data  = JSON.parse(new TextDecoder().decode(bytes));
@@ -1021,7 +991,7 @@ export default class LLMTextProExtension extends Extension {
             GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
             GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(usage)));
         } catch (e) {
-            console.warn('[LLM Text Pro] Could not save usage:', e.message);
+            console.warn(`${LOG_PREFIX} Could not save usage:`, e.message);
         }
     }
 
@@ -1082,7 +1052,7 @@ export default class LLMTextProExtension extends Extension {
         this._history     = this._loadHistory();
         this._usage       = this._loadUsage();
 
-        this._indicator = new TextProIndicator(this);
+        this._indicator = new ClipboardAIIndicator(this);
         this._repositionIndicator();
 
         this._positionSignalIds = [
@@ -1201,14 +1171,14 @@ export default class LLMTextProExtension extends Extension {
                 Meta.KeyBindingFlags.NONE
             );
             if (accelId === Meta.KeyBindingAction.NONE) {
-                console.warn(`[LLM Text Pro] Could not grab accelerator for ${action.hotkey}`);
+                console.warn(`${LOG_PREFIX} Could not grab accelerator for ${action.hotkey}`);
                 return;
             }
             const bindingName = Meta.external_binding_name_for_action(accelId);
             Main.wm.allowKeybinding(bindingName, Shell.ActionMode.ALL);
             this._accelMap.set(accelId, action.id);
         } catch (e) {
-            console.warn(`[LLM Text Pro] Hotkey binding error for ${action.hotkey}: ${e.message}`);
+            console.warn(`${LOG_PREFIX} Hotkey binding error for ${action.hotkey}: ${e.message}`);
         }
     }
 
@@ -1335,9 +1305,9 @@ export default class LLMTextProExtension extends Extension {
         if (this._isProcessing) {
             if (this._actionQueue.length < 5) {
                 this._actionQueue.push(action);
-                Main.notify('LLM Text Pro', `Queued "${action.name}" (Queue size: ${this._actionQueue.length}/5)`);
+                Main.notify(EXTENSION_NAME, `Queued "${action.name}" (Queue size: ${this._actionQueue.length}/5)`);
             } else {
-                Main.notify('LLM Text Pro', `Queue is full (max 5). Dropped "${action.name}".`);
+                Main.notify(EXTENSION_NAME, `Queue is full (max 5). Dropped "${action.name}".`);
             }
             return;
         }
@@ -1370,7 +1340,7 @@ export default class LLMTextProExtension extends Extension {
             const inputWords = _wc(inputText);
 
             if (showNotif) {
-                Main.notify('LLM Text Pro', `Running "${action.name}"…\n${inputWords} words · ${backendName}`);
+                Main.notify(EXTENSION_NAME, `Running "${action.name}"…\n${inputWords} words · ${backendName}`);
             }
 
             const startTime  = Date.now();
@@ -1427,13 +1397,13 @@ export default class LLMTextProExtension extends Extension {
                     tokMatch ? `${tokMatch[1]} tokens` : null,
                     backendName,
                 ].filter(Boolean);
-                Main.notify('LLM Text Pro', `"${action.name}" done\n${metaParts.join(' · ')}`);
+                Main.notify(EXTENSION_NAME, `"${action.name}" done\n${metaParts.join(' · ')}`);
             }
 
         } catch (e) {
-            console.error('[LLM Text Pro] Error:', e);
+            console.error(`${LOG_PREFIX} Error:`, e);
             this._indicator?.setError(e.message);
-            Main.notifyError('LLM Text Pro', _friendlyError(e.message));
+            Main.notifyError(EXTENSION_NAME, _friendlyError(e.message));
         } finally {
             this._isProcessing      = false;
             this._currentActionName = null;
@@ -1588,7 +1558,7 @@ export default class LLMTextProExtension extends Extension {
 
     async _autoStartLMSAndRetry(prompt, text) {
         this._indicator?.setProcessing('Starting LM Studio');
-        Main.notify('LLM Text Pro', 'Starting LM Studio…');
+        Main.notify(EXTENSION_NAME, 'Starting LM Studio…');
 
         // Build the models health-check URL from the configured endpoint
         let modelsUrl = this._settings.get_string('api-endpoint');
@@ -1664,7 +1634,7 @@ export default class LLMTextProExtension extends Extension {
                     throw new Error('Extension disabled during LM Studio startup.');
                 }
                 if (msg.get_status() === 200) {
-                    Main.notify('LLM Text Pro', 'LM Studio ready — processing…');
+                    Main.notify(EXTENSION_NAME, 'LM Studio ready — processing…');
                     this._lmsPollSession = null;
                     return this._callLocalAPI(prompt, text, true);
                 }
@@ -1951,7 +1921,7 @@ export default class LLMTextProExtension extends Extension {
             vkbd.notify_keyval(t + 1, Clutter.KEY_v,         Clutter.KeyState.RELEASED);
             vkbd.notify_keyval(t + 1, Clutter.KEY_Control_L, Clutter.KeyState.RELEASED);
         } catch (e) {
-            console.warn('[LLM Text Pro] Auto-paste failed:', e.message);
+            console.warn(`${LOG_PREFIX} Auto-paste failed:`, e.message);
         }
     }
 }

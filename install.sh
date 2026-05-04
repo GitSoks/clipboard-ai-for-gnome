@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-EXT_UUID="llm-text-pro@sokolowski.tech"
+EXT_UUID="clipboard-ai-for-gnome@sokolowski.tech"
 ZIP_NAME="${EXT_UUID}.zip"
 
 require_command() {

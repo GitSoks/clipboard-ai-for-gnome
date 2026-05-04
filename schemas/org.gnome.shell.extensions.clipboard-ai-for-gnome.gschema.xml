@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="org.gnome.shell.extensions.llm-text-pro"
-          path="/org/gnome/shell/extensions/llm-text-pro/">
+  <schema id="org.gnome.shell.extensions.clipboard-ai-for-gnome"
+          path="/org/gnome/shell/extensions/clipboard-ai-for-gnome/">
 
     <!-- ── Backend ───────────────────────────────────────────────── -->
     <key name="backend" type="s">

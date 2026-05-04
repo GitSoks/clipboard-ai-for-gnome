@@ -1,5 +1,5 @@
 /**
- * LLM Text Pro — prefs.js
+ * Clipboard AI for GNOME — prefs.js
  * Multi-page preferences: Backend selection, CLI / API config,
  * dynamic Actions editor, and General settings.
  */
@@ -12,6 +12,10 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import Soup from 'gi://Soup';
+
+const EXTENSION_NAME = 'Clipboard AI for GNOME';
+const CURRENT_UUID = 'clipboard-ai-for-gnome@sokolowski.tech';
+const LOG_PREFIX = `[${EXTENSION_NAME}]`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default actions — used on fresh install and by the "Reset to Defaults" button
@@ -132,7 +136,7 @@ function makeSpinRow(title, subtitle, settings, key, min, max) {
 // Main Preferences Window
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default class LLMTextProPreferences extends ExtensionPreferences {
+export default class ClipboardAIForGNOMEPreferences extends ExtensionPreferences {
 
     fillPreferencesWindow(window) {
         window.set_default_size(760, 700);
@@ -318,7 +322,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 });
                 dlBtn.connect('clicked', () => {
                     try { Gtk.show_uri(null, b.downloadUrl, GLib.CURRENT_TIME); }
-                    catch (e) { console.warn('[LLM Text Pro] URL:', e.message); }
+                    catch (e) { console.warn(`${LOG_PREFIX} URL:`, e.message); }
                 });
                 row.add_suffix(dlBtn);
                 row.add_css_class('dim-label');
@@ -495,7 +499,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
         });
         downloadBtn.connect('clicked', () => {
             try { Gtk.show_uri(null, downloadUrl, GLib.CURRENT_TIME); }
-            catch (e) { console.warn('[LLM Text Pro] Could not open URL:', e.message); }
+            catch (e) { console.warn(`${LOG_PREFIX} Could not open URL:`, e.message); }
         });
         statusRow.add_suffix(downloadBtn);
         group.add(statusRow);
@@ -629,7 +633,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 popover.popup();
                 fetchBtn.set_icon_name('view-refresh-symbolic');
             } catch (e) {
-                console.warn('[LLM Text Pro] Fetch Models error:', e.message);
+                console.warn(`${LOG_PREFIX} Fetch Models error:`, e.message);
                 fetchBtn.set_icon_name('dialog-error-symbolic');
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
                     fetchBtn.set_icon_name('view-refresh-symbolic');
@@ -694,7 +698,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                 try {
                     proc = Gio.Subprocess.new(cmd, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
                 } catch (e) {
-                    console.warn('[LLM Text Pro] Failed to spawn model fetcher:', e.message);
+                    console.warn(`${LOG_PREFIX} Failed to spawn model fetcher:`, e.message);
                     if (fetchBtn) {
                         fetchBtn.set_icon_name('dialog-error-symbolic');
                         GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
@@ -760,7 +764,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                             throw new Error(err || 'Command failed');
                         }
                     } catch (e) {
-                        console.warn('[LLM Text Pro] Fetch Models error:', e.message);
+                        console.warn(`${LOG_PREFIX} Fetch Models error:`, e.message);
                         if (fetchBtn) {
                             fetchBtn.set_icon_name('dialog-error-symbolic');
                             GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
@@ -771,7 +775,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
                     }
                 });
             } catch (e) {
-                console.warn('[LLM Text Pro] Fetch Models setup error:', e.message);
+                console.warn(`${LOG_PREFIX} Fetch Models setup error:`, e.message);
                 if (fetchBtn) fetchBtn.set_icon_name('dialog-error-symbolic');
             }
         };
@@ -1432,10 +1436,10 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
     // ── History helpers ───────────────────────────────────────────────────────
 
-    _historyFilePath() {
+    _historyFilePath(uuid = CURRENT_UUID) {
         return GLib.build_filenamev([
             GLib.get_user_data_dir(),
-            'llm-text-pro@sokolowski.tech', 'history.json',
+            uuid, 'history.json',
         ]);
     }
 
@@ -1455,7 +1459,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
             GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
             GLib.file_set_contents(path, new TextEncoder().encode(JSON.stringify(history)));
         } catch (e) {
-            console.warn('[LLM Text Pro] prefs: could not save history:', e.message);
+            console.warn(`${LOG_PREFIX} prefs: could not save history:`, e.message);
         }
     }
 
@@ -1802,7 +1806,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         const _openUrl = (url) => {
             try { Gtk.show_uri(null, url, GLib.CURRENT_TIME); }
-            catch (e) { console.warn('[LLM Text Pro] Could not open URL:', e.message); }
+            catch (e) { console.warn(`${LOG_PREFIX} Could not open URL:`, e.message); }
         };
 
         // ── App header ───────────────────────────────────────────────────────
@@ -1832,7 +1836,7 @@ export default class LLMTextProPreferences extends ExtensionPreferences {
 
         // Title
         headerBox.append(new Gtk.Label({
-            label: '<span size="xx-large" weight="bold">LLM Text Pro</span>',
+            label: `<span size="xx-large" weight="bold">${EXTENSION_NAME}</span>`,
             use_markup: true,
             halign: Gtk.Align.CENTER,
         }));

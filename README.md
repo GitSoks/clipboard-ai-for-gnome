@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="icons/logo.svg" width="120" height="120" alt="LLM Text Pro Logo">
+  <img src="icons/logo.svg" width="120" height="120" alt="Clipboard AI for GNOME Logo">
 </p>
 
-<h1 align="center">LLM Text Pro</h1>
+<h1 align="center">Clipboard AI for GNOME</h1>
 
 <p align="center">
   <strong>AI-powered clipboard actions for GNOME Shell</strong>
@@ -22,7 +22,7 @@
 
 ## Overview
 
-**LLM Text Pro** is a GNOME Shell extension for instant text transformation. Copy text, trigger an action, and get the rewritten result back on your clipboard — or pasted straight into the focused app.
+**Clipboard AI for GNOME** is a GNOME Shell extension for instant text transformation. Copy text, trigger an action, and get the rewritten result back on your clipboard — or pasted straight into the focused app.
 
 It is designed for real desktop use: quick grammar fixes, translation, tone adjustment, drafting replies, summarising long text, and even code explanation or refactoring.
 
@@ -73,8 +73,8 @@ Install and authenticate the backend(s) you want to use:
 ### Quick install
 
 ```bash
-git clone https://github.com/GitSoks/llm-text-pro.git
-cd llm-text-pro
+git clone https://github.com/GitSoks/clipboard-ai-for-gnome.git
+cd clipboard-ai-for-gnome
 bash install.sh
 ```
 
@@ -89,13 +89,13 @@ The installer will:
 ### Manual installation
 
 ```bash
-git clone https://github.com/GitSoks/llm-text-pro.git \
-  ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech
+git clone https://github.com/GitSoks/clipboard-ai-for-gnome.git \
+  ~/.local/share/gnome-shell/extensions/clipboard-ai-for-gnome@sokolowski.tech
 
 glib-compile-schemas \
-  ~/.local/share/gnome-shell/extensions/llm-text-pro@sokolowski.tech/schemas/
+  ~/.local/share/gnome-shell/extensions/clipboard-ai-for-gnome@sokolowski.tech/schemas/
 
-gnome-extensions enable llm-text-pro@sokolowski.tech
+gnome-extensions enable clipboard-ai-for-gnome@sokolowski.tech
 ```
 
 If you are on **Wayland**, you may need to log out and back in after first install.
@@ -196,7 +196,7 @@ The extension uses custom icons for each supported backend in both the preferenc
 
 ## Acknowledgements
 
-**LLM Text Pro** is based on **[LLM Text Modifier](https://github.com/rishabhbajpai/llm-text-modifier)** by [Rishabh Bajpai](https://rishabhbajpai24.com), extended with multi-backend support, richer UI, queueing, usage tracking, history, and desktop-focused automation.
+**Clipboard AI for GNOME** is based on **[LLM Text Modifier](https://github.com/rishabhbajpai/llm-text-modifier)** by [Rishabh Bajpai](https://rishabhbajpai24.com), extended with multi-backend support, richer UI, queueing, usage tracking, history, and desktop-focused automation.
 
 ## License
 
