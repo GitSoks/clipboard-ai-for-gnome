@@ -1295,10 +1295,14 @@ export default class ClipboardAIForGNOMEPreferences extends ExtensionPreferences
     _parseActions(settings) {
         try {
             const data = JSON.parse(settings.get_string('actions-json'));
-            return Array.isArray(data) ? data : [];
-        } catch (_) {
-            return [];
+            if (Array.isArray(data) && data.length > 0) return data;
+        } catch (_) {}
+        // Empty or unparseable — seed defaults on first install (no explicit user value yet)
+        if (!settings.get_user_value('actions-json')) {
+            settings.set_string('actions-json', JSON.stringify(DEFAULT_ACTIONS));
+            return [...DEFAULT_ACTIONS];
         }
+        return [];
     }
 
     // ── Page: General ────────────────────────────────────────────────────────
