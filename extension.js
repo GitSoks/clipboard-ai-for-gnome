@@ -84,7 +84,7 @@ class ClipboardAIIndicator extends PanelMenu.Button {
         super._init(0.0, EXTENSION_NAME);
         this._ext = extension;
 
-        const box = new St.BoxLayout({ vertical: false, style_class: 'panel-status-indicators-box' });
+        const box = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, style_class: 'panel-status-indicators-box' });
 
         // Main panel icon — changes gicon/icon_name + color class based on state
         this._panelIcon = new St.Icon({
@@ -153,9 +153,9 @@ class ClipboardAIIndicator extends PanelMenu.Button {
         this._resultPreviewItem = new PopupMenu.PopupBaseMenuItem({ reactive: true });
         this._resultPreviewItem.visible = false;
 
-        const rbox = new St.BoxLayout({ vertical: true, x_expand: true, style_class: 'llm-result-box' });
+        const rbox = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'llm-result-box' });
 
-        const rHeader = new St.BoxLayout({ vertical: false, x_expand: true });
+        const rHeader = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_expand: true });
         rHeader.add_child(new St.Icon({
             icon_name: 'object-select-symbolic',
             icon_size: 11,
@@ -199,7 +199,7 @@ class ClipboardAIIndicator extends PanelMenu.Button {
         // Backend switcher — grid-style layout
         this._backendBoxItem = new PopupMenu.PopupBaseMenuItem({ reactive: false });
 
-        const backendContainerOuter = new St.BoxLayout({ vertical: true, x_expand: true });
+        const backendContainerOuter = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_expand: true });
 
         const backendLabel = new St.Label({
             text: 'Backend',
@@ -210,7 +210,7 @@ class ClipboardAIIndicator extends PanelMenu.Button {
         backendContainerOuter.add_child(backendLabel);
 
         this._backendSwitchBox = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             style_class: 'llm-backend-switch-container',
         });
@@ -380,7 +380,7 @@ class ClipboardAIIndicator extends PanelMenu.Button {
         available.forEach((b, i) => {
             if (i % COLS === 0) {
                 row = new St.BoxLayout({
-                    vertical: false,
+                    orientation: Clutter.Orientation.HORIZONTAL,
                     x_expand: true,
                     style_class: 'llm-backend-row',
                 });
@@ -400,7 +400,7 @@ class ClipboardAIIndicator extends PanelMenu.Button {
 
             // Icon + label box
             const btnBox = new St.BoxLayout({
-                vertical: false,
+                orientation: Clutter.Orientation.HORIZONTAL,
                 x_align: Clutter.ActorAlign.CENTER,
                 y_align: Clutter.ActorAlign.CENTER,
                 x_expand: true,
@@ -675,7 +675,7 @@ class ClipboardAIIndicator extends PanelMenu.Button {
             const item = new PopupMenu.PopupBaseMenuItem();
             item.add_style_class_name('llm-hist-item');
 
-            const hbox = new St.BoxLayout({ vertical: false, x_expand: true, style_class: 'llm-hist-hbox' });
+            const hbox = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_expand: true, style_class: 'llm-hist-hbox' });
 
             // Action-specific icon
             hbox.add_child(new St.Icon({
@@ -686,10 +686,10 @@ class ClipboardAIIndicator extends PanelMenu.Button {
             }));
 
             // Content column
-            const vbox = new St.BoxLayout({ vertical: true, x_expand: true });
+            const vbox = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_expand: true });
 
             // Header: action name + precise timestamp
-            const topRow = new St.BoxLayout({ vertical: false, x_expand: true });
+            const topRow = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_expand: true });
             topRow.add_child(new St.Label({
                 text: entry.actionName,
                 style_class: 'llm-hist-action',
